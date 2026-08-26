@@ -2,6 +2,9 @@
 title Cypher UI
 cd /d "%~dp0"
 
+REM Ensure pipx-installed tools (sherlock, holehe, maigret, ...) are found.
+set "PATH=%USERPROFILE%\.local\bin;%PATH%"
+
 if not exist ".venv\Scripts\python.exe" (
   echo First-time setup: creating virtual environment...
   python -m venv .venv
