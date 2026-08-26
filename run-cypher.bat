@@ -31,6 +31,19 @@ if not exist ".venv\Scripts\python.exe" (
   echo.
 )
 
+REM Default to subscription mode (free — uses the Claude CLI, no API credits).
+if not exist ".env" echo CYPHER_LLM=cli> .env
+
+REM Check the Claude CLI (needed for AI on your subscription).
+where claude >nul 2>nul
+if errorlevel 1 (
+  echo.
+  echo   NOTE: AI (chat + briefings) runs on your Claude subscription via Claude Code.
+  echo   Install it and run 'claude' once to log in - then it's free, no credits.
+  echo   Scans, graph and profile cards work right now without it.
+  echo.
+)
+
 echo Starting Cypher UI - your browser will open at http://127.0.0.1:8765
 ".venv\Scripts\python.exe" -m cypher.web
 pause
