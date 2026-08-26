@@ -54,6 +54,30 @@ def _save_env_key(key: str) -> bool:
         return False
 
 
+def _build_graph(inv) -> dict:
+    """Build a node/link graph: target -> module -> discovered entities."""
+    nodes: dict[str, dict] = {}
+    links: list[dict] = []
+
+    def add(node_id: str, label: str, group: str) -> None:
+        nodes.setdefault(node_id, {"id": node_id, "label": label, "group": group})
+
+    root = inv.target.value
+    add(root, root, inv.target.type.value)
+    for res in inv.results:
+        if res.skipped or not res.ok or not res.findings:
+            continue
+        mid = f"mod:{res.module}"
+        add(mid, res.module, "module")
+        links.append({"source": root, "target": mid})
+        for nt in res.new_targets:
+            if nt.value == root:
+                continue
+            add(nt.value, nt.value, nt.type.value)
+            links.append({"source": mid, "target": nt.value})
+    return {"nodes": list(nodes.values()), "links": links}
+
+
 def run_investigation(payload: dict) -> dict:
     raw = (payload.get("target") or "").strip()
     if not raw:
@@ -107,6 +131,7 @@ def run_investigation(payload: dict) -> dict:
         "plan": inv.plan,
         "reasoning": inv.plan_reasoning,
         "summary": inv.summary,
+        "graph": _build_graph(inv),
         "report_path": paths.get("markdown"),
         "obsidian_path": obsidian_path,
         "saved_key": saved_key,
@@ -299,6 +324,10 @@ $("run").onclick=async()=>{
 function esc(s){return (s||"").replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));}
 function render(d){
   let h="";
+  if(d.graph&&d.graph.nodes.length){
+    h+='<div class="card"><label>Entity graph — '+d.graph.nodes.length+' nodes / '+d.graph.links.length+' links</label>';
+    h+='<canvas id="graph" width="860" height="440" style="width:100%;border:1px solid var(--line);border-radius:8px;background:#0c1219"></canvas></div>';
+  }
   h+='<div class="card"><label>Intelligence summary'+(d.ai_used?" (Claude)":" (deterministic)")+'</label>';
   h+='<div class="summary">'+esc(d.summary)+'</div></div>';
   h+='<div class="card"><label>Module results — plan: '+esc((d.plan||[]).join(", "))+'</label>';
@@ -314,6 +343,37 @@ function render(d){
   }
   h+='</div>';
   $("out").innerHTML=h;
+  if(d.graph&&d.graph.nodes.length)drawGraph(d.graph);
+}
+let _raf=null;
+function drawGraph(g){
+  const cv=$("graph"); if(!cv)return;
+  const ctx=cv.getContext("2d"),W=cv.width,H=cv.height;
+  const col={domain:"#8ad4ff",ip:"#57d9a3",email:"#ffb454",url:"#39d0d8",username:"#c39bff",module:"#7c8b9c"};
+  const rootId=g.nodes[0].id;
+  const nodes=g.nodes.map(n=>({...n,x:W/2+(Math.random()-.5)*220,y:H/2+(Math.random()-.5)*220,vx:0,vy:0}));
+  const idx={}; nodes.forEach((n,i)=>idx[n.id]=i);
+  const links=g.links.filter(l=>l.source in idx&&l.target in idx);
+  if(_raf)cancelAnimationFrame(_raf);
+  function step(){
+    for(let i=0;i<nodes.length;i++)for(let j=i+1;j<nodes.length;j++){
+      const a=nodes[i],b=nodes[j];let dx=a.x-b.x,dy=a.y-b.y,d=Math.hypot(dx,dy)||1;
+      const f=1400/(d*d);dx/=d;dy/=d;a.vx+=dx*f;a.vy+=dy*f;b.vx-=dx*f;b.vy-=dy*f;}
+    for(const l of links){const a=nodes[idx[l.source]],b=nodes[idx[l.target]];
+      let dx=b.x-a.x,dy=b.y-a.y,d=Math.hypot(dx,dy)||1,f=(d-90)*0.02;
+      dx/=d;dy/=d;a.vx+=dx*f;a.vy+=dy*f;b.vx-=dx*f;b.vy-=dy*f;}
+    for(const n of nodes){n.vx+=(W/2-n.x)*0.002;n.vy+=(H/2-n.y)*0.002;
+      n.vx*=0.85;n.vy*=0.85;n.x+=n.vx;n.y+=n.vy;}
+    ctx.clearRect(0,0,W,H);ctx.strokeStyle="#1f2a37";ctx.lineWidth=1;
+    for(const l of links){const a=nodes[idx[l.source]],b=nodes[idx[l.target]];
+      ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.stroke();}
+    ctx.font="10px ui-monospace,monospace";
+    for(const n of nodes){const r=n.id===rootId?10:(n.group==="module"?4:6);
+      ctx.fillStyle=col[n.group]||"#d7e0ea";ctx.beginPath();ctx.arc(n.x,n.y,r,0,7);ctx.fill();
+      ctx.fillStyle="#8ba0b4";ctx.fillText((n.label||"").slice(0,24),n.x+r+3,n.y+3);}
+    _raf=requestAnimationFrame(step);
+  }
+  step();
 }
 $("target").addEventListener("keydown",e=>{if(e.key==="Enter")$("run").click();});
 </script>
