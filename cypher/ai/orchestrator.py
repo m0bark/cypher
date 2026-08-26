@@ -35,6 +35,19 @@ class Investigation:
     ai_used: bool = False
     expanded_targets: list[str] = field(default_factory=list)
 
+    def entity_map(self) -> dict:
+        """Discovered entities -> {type, modules that surfaced it}. Raw material
+        for connecting the dots across modules."""
+        ent: dict = {}
+        for res in self.results:
+            for nt in res.new_targets:
+                if nt.value == self.target.value:
+                    continue
+                rec = ent.setdefault(nt.value, {"type": nt.type.value, "modules": []})
+                if res.module not in rec["modules"]:
+                    rec["modules"].append(res.module)
+        return ent
+
     def findings_payload(self) -> list[dict]:
         payload = []
         for res in self.results:
@@ -157,15 +170,17 @@ class Orchestrator:
     # -- synthesis --------------------------------------------------------
     def synthesize(self, inv: Investigation) -> str:
         payload = inv.findings_payload()
+        entities = inv.entity_map()
         if self.use_ai and payload:
             try:
                 inv.summary = self._complete(
-                    prompts.SYNTH_SYSTEM, prompts.synth_user(str(inv.target), payload)
+                    prompts.SYNTH_SYSTEM,
+                    prompts.synth_user(str(inv.target), payload, entities),
                 )
                 return inv.summary
             except Exception:
                 pass
-        inv.summary = _template_summary(inv)
+        inv.summary = _template_summary(inv, entities)
         return inv.summary
 
     # -- anthropic client -------------------------------------------------
@@ -191,7 +206,7 @@ def _extract_json(text: str) -> str:
     return text[start : end + 1]
 
 
-def _template_summary(inv: Investigation) -> str:
+def _template_summary(inv: Investigation, entities: dict | None = None) -> str:
     findings = [
         (res.module, f)
         for res in inv.results
@@ -203,6 +218,23 @@ def _template_summary(inv: Investigation) -> str:
     if not findings:
         lines.append("No findings were produced.")
         return "\n".join(lines)
+
+    if entities:
+        lines.append("## Connections (consolidated footprint)")
+        corroborated = {v: d for v, d in entities.items() if len(d["modules"]) > 1}
+        if corroborated:
+            lines.append("_Corroborated — surfaced by more than one module:_")
+            for value, d in sorted(corroborated.items(), key=lambda kv: -len(kv[1]["modules"])):
+                lines.append(f"- **{value}** ({d['type']}) — via {', '.join(d['modules'])}")
+        by_type: dict[str, list[str]] = {}
+        for value, d in entities.items():
+            by_type.setdefault(d["type"], []).append(value)
+        for etype, values in sorted(by_type.items()):
+            lines.append(f"- {etype}: {', '.join(sorted(values))}")
+        lines.append("")
+        lines.append("_Enable Claude (ANTHROPIC_API_KEY) for a real correlation "
+                     "assessment — clusters, confidence, timeline, and exposure._")
+        lines.append("")
 
     notable = [mf for mf in findings if mf[1].severity in (Severity.HIGH, Severity.MEDIUM)]
     if notable:
