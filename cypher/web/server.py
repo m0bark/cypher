@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -232,26 +233,65 @@ def chat(payload: dict) -> dict:
     return _chat_api(settings, history)
 
 
-def _chat_cli(history: list, context: str) -> dict:
-    """Chat on the Claude subscription via the CLI. No tool-use auto-scan — Cypher
-    reasons over the current scan context and asks the operator to RUN if it needs data."""
-    from ..ai import claude_cli
+CLI_SCAN_PROTOCOL = (
+    "\n\nYou CAN run scans yourself. When you have a concrete target and need data, reply "
+    "with EXACTLY one line and nothing else:\n"
+    "RUN_SCAN: <target> | <CATEGORY>\n"
+    f"CATEGORY is one of: {', '.join(CATS)}. Use ALL if unsure. Put nothing else on that "
+    "turn — the system runs it and hands you the results, then you write the briefing.\n"
+    "Only scan the operator's own footprint or a target they're clearly authorized to "
+    "assess. If asked to profile some random private individual, refuse in one dry line "
+    "instead of scanning."
+)
 
-    convo = "\n".join(
+
+def _convo(history: list) -> str:
+    return "\n".join(
         ("OPERATOR: " if m["role"] == "user" else "CYPHER: ") + m["content"] for m in history
     )
+
+
+def _chat_cli(history: list, context: str) -> dict:
+    """Chat on the Claude subscription via the CLI, with a manual scan loop so Cypher
+    can fetch data itself (emit RUN_SCAN, we run it, it briefs on the results)."""
+    from ..ai import claude_cli
+
+    convo = _convo(history)
     prompt = (
-        CYPHER_PERSONA
-        + "\n\n(CLI mode: you cannot run scans yourself. If you need data that isn't in the "
-        "DATA block, tell the operator to type the target in the RUN box on the right and hit "
-        "RUN — then you'll analyze it.)\n\n=== INVESTIGATION DATA ===\n"
-        + (context[:12000] or "(no scan run yet)")
+        CYPHER_PERSONA + CLI_SCAN_PROTOCOL
+        + "\n\n=== DATA (any prior scan) ===\n" + (context[:12000] or "(none yet)")
         + "\n\n=== CONVERSATION ===\n" + convo + "\nCYPHER:"
     )
     try:
-        return {"ok": True, "reply": claude_cli.complete(prompt) or "(silence)"}
+        reply = claude_cli.complete(prompt)
     except Exception as exc:
         return {"ok": False, "error": str(exc)}
+
+    m = re.search(r"RUN_SCAN:\s*([^\n]+)", reply)
+    if not m:
+        return {"ok": True, "reply": reply or "(silence)"}
+
+    parts = [p.strip() for p in m.group(1).split("|")]
+    target = parts[0]
+    category = parts[1].upper() if len(parts) > 1 and parts[1] else "ALL"
+    if category not in CATS:
+        category = "ALL"
+    scan = run_investigation({
+        "target": target, "authorized": True, "personal_ok": True, "no_ai": True,
+        "modules": CATS.get(category),
+    })
+    brief_prompt = (
+        CYPHER_PERSONA
+        + f"\n\nYou just scanned '{target}'. RESULTS:\n" + _scan_brief(scan)
+        + "\n\n=== CONVERSATION ===\n" + convo
+        + "\n\nNow give the operator a tight, smug briefing grounded ONLY in these results — "
+        "what you found, how it connects, the exposure, the next move.\nCYPHER:"
+    )
+    try:
+        reply2 = claude_cli.complete(brief_prompt)
+    except Exception:
+        reply2 = f"Scanned {target}. Results are in the panel."
+    return {"ok": True, "reply": reply2, "scan": scan}
 
 
 def _chat_api(settings, history: list) -> dict:
@@ -408,6 +448,9 @@ PAGE_HTML = """<!doctype html>
   .direct input.t{flex:1;background:#0c0710;border:1px solid var(--line);border-radius:9px;
     color:var(--text);font:inherit;font-size:12px;padding:9px 11px}
   .direct input.t:focus{outline:none;border-color:var(--pink)}
+  .direct .catsel{background:#0c0710;border:1px solid var(--line);border-radius:9px;
+    color:var(--pink2);font:inherit;font-size:11px;padding:8px 6px;cursor:pointer}
+  .direct .catsel:focus{outline:none;border-color:var(--pink)}
   .direct .go{background:var(--pink);color:#2a061c;border:0;border-radius:9px;font:inherit;
     font-weight:700;padding:0 16px;align-self:stretch;cursor:pointer}
   .authrow{font-size:11px;color:var(--pink2);display:flex;align-items:center;gap:6px}
@@ -455,7 +498,8 @@ PAGE_HTML = """<!doctype html>
 
   <div class="side">
     <div class="direct">
-      <input id="target" class="t" placeholder="or scan directly (no AI): a target">
+      <input id="target" class="t" placeholder="scan a target directly">
+      <select id="cat" class="catsel" title="which modules to run"></select>
       <button id="run" class="go">RUN</button>
     </div>
     <label class="authrow"><input type="checkbox" id="authorized"> I'm authorized to assess this</label>
@@ -466,6 +510,15 @@ PAGE_HTML = """<!doctype html>
 <script>
 const $=id=>document.getElementById(id);
 window.CTX="";
+const CATS={ALL:null,
+  DOMAIN:["dns_records","rdap_whois","crtsh_subdomains","wayback","http_fingerprint","whois","subfinder","amass","assetfinder","findomain","sublist3r","dnsrecon","dnsenum","fierce","dnstwist","gau","waybackurls","urlscan"],
+  EMAIL:["email_recon","breach_check","holehe","h8mail","mosint","socialscan"],
+  USERNAME:["username_sites","github_recon","sherlock","maigret","socialscan","telegram","instagram"],
+  INSTAGRAM:["instagram"],TELEGRAM:["telegram"],PHONE:["phone_info"],
+  IP:["ip_info","rdap_whois","bgpview","shodan_host","nmap","naabu","rustscan"],
+  WEB:["http_fingerprint","whatweb","wafw00f","httpx","katana","nuclei","nikto","gobuster","wpscan","sslscan"],
+  PORTS:["nmap","naabu","rustscan"],BREACH:["breach_check","h8mail","holehe"]};
+Object.keys(CATS).forEach(k=>{const o=document.createElement("option");o.value=k;o.textContent=k;$("cat").appendChild(o);});
 fetch("/config").then(r=>r.json()).then(c=>{
   const b={cli:"<span class=on>ONLINE · subscription</span>",api:"<span class=on>ONLINE · API</span>",
     none:"<span class=off>ASLEEP — no AI backend</span>"}[c.backend]||"";
@@ -501,10 +554,11 @@ $("in").addEventListener("keydown",e=>{if(e.key==="Enter"&&!e.shiftKey){e.preven
 
 // direct (no-AI) scan
 $("run").onclick=async()=>{
-  const body={target:$("target").value,authorized:$("authorized").checked,personal_ok:true,no_ai:true};
+  const body={target:$("target").value,authorized:$("authorized").checked,personal_ok:true,
+    no_ai:true,modules:CATS[$("cat").value]};
   if(!body.target){$("side").textContent="Enter a target.";return;}
   if(!body.authorized){$("side").textContent="Tick 'authorized' first.";return;}
-  $("side").textContent="scanning "+body.target+"…";$("out").innerHTML="";
+  $("side").textContent="scanning "+body.target+" ["+$("cat").value+"]…";$("out").innerHTML="";
   try{const r=await fetch("/scan",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
     const d=await r.json();
     if(!d.ok){$("side").textContent="✗ "+d.error;return;}
