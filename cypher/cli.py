@@ -139,10 +139,23 @@ def build_parser() -> argparse.ArgumentParser:
     pm = sub.add_parser("modules", help="List available modules.")
     pm.set_defaults(func=cmd_modules)
 
+    pw = sub.add_parser("web", help="Launch the browser UI.")
+    pw.add_argument("--host", default="127.0.0.1", help="bind host (default 127.0.0.1)")
+    pw.add_argument("--port", type=int, default=8765, help="port (default 8765)")
+    pw.add_argument("--no-open", action="store_true", help="don't auto-open the browser")
+    pw.set_defaults(func=cmd_web)
+
     pv = sub.add_parser("version", help="Print version.")
     pv.set_defaults(func=lambda a: (_echo(f"cypher {__version__}"), 0)[1])
 
     return p
+
+
+def cmd_web(args: argparse.Namespace) -> int:
+    from .web.server import serve
+
+    serve(host=args.host, port=args.port, open_browser=not args.no_open)
+    return 0
 
 
 def main(argv: list[str] | None = None) -> int:

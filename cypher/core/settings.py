@@ -31,6 +31,7 @@ class Settings:
     rate_limit_per_host: float = DEFAULT_RATE_LIMIT
     passive_only: bool = False
     output_dir: str = DEFAULT_OUTPUT_DIR
+    obsidian_vault: str | None = None
 
     @property
     def ai_enabled(self) -> bool:
@@ -62,6 +63,7 @@ class Settings:
             passive_only=os.environ.get("CYPHER_PASSIVE_ONLY", "").lower()
             in {"1", "true", "yes"},
             output_dir=os.environ.get("CYPHER_OUTPUT_DIR", DEFAULT_OUTPUT_DIR),
+            obsidian_vault=os.environ.get("CYPHER_VAULT"),
         )
 
     def env_key(self, name: str) -> str | None:
