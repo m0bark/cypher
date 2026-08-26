@@ -12,6 +12,7 @@ passive-only runs, and are gated behind the authorization prompt.
 
 from __future__ import annotations
 
+import re
 import shutil
 import subprocess
 from collections.abc import Callable
@@ -24,6 +25,9 @@ from ..core.target import Target, TargetType
 EXTERNAL_TOOL_TIMEOUT = 300  # seconds; hard cap per tool
 MAX_PREVIEW_LINES = 25
 DIRB_WORDLIST = "/usr/share/wordlists/dirb/common.txt"
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
+# Lines that are tool self-promotion / credits, not findings about the target.
+_NOISE_MARKERS = ("donation", "megadose", "@palenath", "1FHDM49", "twitter :", "github :")
 
 
 def _url(target: str) -> str:
@@ -232,21 +236,45 @@ class ExternalToolModule(BaseModule):
 
     def _parse(self, target: Target, output: str, returncode: int) -> ModuleResult:
         assert self.spec is not None
-        lines = [ln for ln in output.splitlines() if ln.strip()]
-        hits = [ln for ln in lines if "http" in ln.lower() or ln.strip().startswith("[+]")]
-        preview = "\n".join(lines[:MAX_PREVIEW_LINES])
-        if len(lines) > MAX_PREVIEW_LINES:
-            preview += f"\n... (+{len(lines) - MAX_PREVIEW_LINES} more lines)"
-
-        severity = Severity.LOW if hits else Severity.INFO
-        findings = [
-            Finding(
-                f"{self.spec.binary}: {len(lines)} lines",
-                preview or "(no output)",
-                severity,
-                {"hits": hits[:50], "returncode": returncode},
-            )
+        output = _ANSI_RE.sub("", output)
+        lines = [
+            ln.strip()
+            for ln in output.splitlines()
+            if ln.strip() and not any(m in ln.lower() for m in _NOISE_MARKERS)
         ]
+
+        # Prefer explicit "[+]" hit markers (holehe/sherlock); drop legend lines that
+        # also carry the "[-]"/"[x]" markers. Else fall back to URL-bearing lines.
+        plus = [
+            ln for ln in lines
+            if ln.startswith("[+]") and "[-]" not in ln and "[x]" not in ln
+        ]
+        hits = plus if plus else [ln for ln in lines if "http" in ln.lower()]
+
+        if hits:
+            detail = "; ".join(hits[:40])
+            if len(hits) > 40:
+                detail += f" ... (+{len(hits) - 40} more)"
+            findings = [
+                Finding(
+                    f"{self.spec.binary}: {len(hits)} hits",
+                    detail,
+                    Severity.LOW,
+                    {"hits": hits[:60], "returncode": returncode},
+                )
+            ]
+        else:
+            preview = "\n".join(lines[:MAX_PREVIEW_LINES])
+            if len(lines) > MAX_PREVIEW_LINES:
+                preview += f"\n... (+{len(lines) - MAX_PREVIEW_LINES} more lines)"
+            findings = [
+                Finding(
+                    f"{self.spec.binary}: {len(lines)} lines",
+                    preview or "(no output)",
+                    Severity.INFO,
+                    {"returncode": returncode},
+                )
+            ]
         return ModuleResult(
             module=self.name, target=target.value, ok=True, findings=findings, raw=output
         )
