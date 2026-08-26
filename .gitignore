@@ -17,3 +17,6 @@ env/
 
 # Generated output
 reports/
+
+# External tool output dropped in the project root (sherlock <user>.txt, etc.)
+/*.txt

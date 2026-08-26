@@ -15,6 +15,7 @@ from __future__ import annotations
 import re
 import shutil
 import subprocess
+import tempfile
 from collections.abc import Callable
 from dataclasses import dataclass
 
@@ -209,13 +210,17 @@ class ExternalToolModule(BaseModule):
 
         argv = [binary_path, *self.spec.build_args(target.value)]
         try:
-            proc = subprocess.run(
-                argv,
-                capture_output=True,
-                text=True,
-                timeout=EXTERNAL_TOOL_TIMEOUT,
-                check=False,
-            )
+            # Run in a throwaway working dir: some tools (sherlock, etc.) drop
+            # output files in cwd — keep them out of the project/repo.
+            with tempfile.TemporaryDirectory(prefix="cypher-tool-") as workdir:
+                proc = subprocess.run(
+                    argv,
+                    capture_output=True,
+                    text=True,
+                    timeout=EXTERNAL_TOOL_TIMEOUT,
+                    check=False,
+                    cwd=workdir,
+                )
         except subprocess.TimeoutExpired:
             return ModuleResult.failure(
                 self.name, target.value,
