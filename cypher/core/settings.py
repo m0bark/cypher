@@ -25,6 +25,7 @@ class Settings:
     hibp_api_key: str | None = None
     ipinfo_token: str | None = None
     github_token: str | None = None
+    shodan_api_key: str | None = None
     user_agent: str = DEFAULT_USER_AGENT
     timeout: float = DEFAULT_TIMEOUT
     rate_limit_per_host: float = DEFAULT_RATE_LIMIT
@@ -54,6 +55,7 @@ class Settings:
             hibp_api_key=os.environ.get("HIBP_API_KEY"),
             ipinfo_token=os.environ.get("IPINFO_TOKEN"),
             github_token=os.environ.get("GITHUB_TOKEN"),
+            shodan_api_key=os.environ.get("SHODAN_API_KEY"),
             user_agent=os.environ.get("CYPHER_USER_AGENT", DEFAULT_USER_AGENT),
             timeout=_float("CYPHER_TIMEOUT", DEFAULT_TIMEOUT),
             rate_limit_per_host=_float("CYPHER_RATE_LIMIT", DEFAULT_RATE_LIMIT),
@@ -68,6 +70,7 @@ class Settings:
             "HIBP_API_KEY": self.hibp_api_key,
             "IPINFO_TOKEN": self.ipinfo_token,
             "GITHUB_TOKEN": self.github_token,
+            "SHODAN_API_KEY": self.shodan_api_key,
             "ANTHROPIC_API_KEY": self.anthropic_api_key,
         }
         return mapping.get(name) or os.environ.get(name)
