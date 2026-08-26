@@ -73,24 +73,19 @@ def cmd_scan(args: argparse.Namespace) -> int:
         return 2
 
     # -- authorization gate ------------------------------------------------
-    _echo("=" * 68)
-    _echo(AUTHORIZATION_NOTICE)
-    _echo("=" * 68)
     decision = assess(target)
     if not decision.allowed:
         _echo(f"Refusing: {decision.reason}")
         return 2
-    _echo(f"Target: {target}  —  {decision.reason}\n")
-    if not _confirm("Do you have authorization to assess this target?", args.yes):
-        _echo("Aborted: authorization not confirmed.")
-        return 1
-    if decision.requires_confirmation and looks_personal(target):
-        if not _confirm(
-            "This looks like a private individual. Confirm this is you or a consented/"
-            "authorized subject", args.yes
-        ):
-            _echo("Aborted: personal-target confirmation declined.")
+    if not args.yes:
+        _echo(f"[{AUTHORIZATION_NOTICE}]")
+        if not _confirm(f"Assess {target}?", args.yes):
+            _echo("Aborted.")
             return 1
+        if decision.requires_confirmation and looks_personal(target):
+            if not _confirm("Personal account — is this yours / are you authorized?", args.yes):
+                _echo("Aborted.")
+                return 1
 
     ctx = Context.create(settings)
     registry = discover()

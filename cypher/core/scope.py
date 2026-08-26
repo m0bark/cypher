@@ -34,12 +34,8 @@ CONSUMER_EMAIL_DOMAINS = {
 }
 
 AUTHORIZATION_NOTICE = (
-    "Cypher collects only open-source, publicly available information, but that\n"
-    "does not make every use of it acceptable. Use it against assets you own or\n"
-    "are explicitly authorized to assess (a pentest scope, your own domains and\n"
-    "accounts, a client engagement), or to check your own / your org's exposure.\n"
-    "Do not use it to profile, locate, or build a dossier on a private individual\n"
-    "who has not consented. That is stalking, and this tool will not help with it."
+    "Authorized / defensive use only — your own assets and accounts, or targets "
+    "you're permitted to assess."
 )
 
 
@@ -73,11 +69,7 @@ def assess(target: Target) -> ScopeDecision:
         return ScopeDecision(
             allowed=True,
             requires_confirmation=True,
-            reason=(
-                "This target reads as a private individual (personal account or "
-                "consumer email). Only continue if this is you, or someone who has "
-                "consented, or a subject you are legally authorized to investigate."
-            ),
+            reason="Personal account — continue only if it's yours or you're authorized.",
         )
     return ScopeDecision(
         allowed=True,
