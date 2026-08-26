@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from ..core.context import Context
 from ..core.module import BaseModule, Finding, ModuleResult, Severity
-from ..core.target import Target, TargetType
+from ..core.target import Target, TargetType, parse_target
 
 
 class GithubRecon(BaseModule):
@@ -57,10 +57,29 @@ class GithubRecon(BaseModule):
                         Severity.INFO, {"languages": dict(top)})
             )
 
+        # Pivots: turn linked profile fields into new targets to chase.
+        new_targets = []
+        pivots = []
+        blog = (profile.get("blog") or "").strip()
+        if blog:
+            t = parse_target(blog if blog.startswith("http") else f"https://{blog}")
+            new_targets.append(t)
+            pivots.append(f"blog: {blog}")
+        if profile.get("twitter_username"):
+            new_targets.append(parse_target(str(profile["twitter_username"])))
+            pivots.append(f"twitter: @{profile['twitter_username']}")
+        if profile.get("email"):
+            new_targets.append(parse_target(str(profile["email"])))
+            pivots.append(f"email: {profile['email']}")
+        if pivots:
+            findings.append(Finding("Linked accounts (pivots)", "; ".join(pivots),
+                                    Severity.LOW, {"pivots": pivots}))
+
         if not findings:
             return ModuleResult.failure(self.name, target.value, "No public GitHub data found.")
 
         return ModuleResult(
             module=self.name, target=target.value, ok=True, findings=findings,
+            new_targets=new_targets,
             raw={"profile": profile, "repo_count": len(repos)},
         )

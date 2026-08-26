@@ -9,7 +9,7 @@ serves a login wall it reports that plainly rather than guessing.
 from __future__ import annotations
 
 from ..core.context import Context
-from ..core.htmlmeta import og_tags
+from ..core.htmlmeta import links_in, og_tags
 from ..core.module import BaseModule, Finding, ModuleResult, Severity
 from ..core.target import Target, TargetType, parse_target
 
@@ -48,7 +48,17 @@ class InstagramIntel(BaseModule):
         ]
         if desc:
             findings.append(Finding("Instagram bio/stats", desc, Severity.INFO))
+
+        new_targets = [parse_target(url)]
+        urls, handles = links_in(desc)
+        pivots = urls + [f"@{h}" for h in handles]
+        for item in urls:
+            new_targets.append(parse_target(item))
+        for h in handles:
+            new_targets.append(parse_target(h))
+        if pivots:
+            findings.append(Finding("Links in bio (pivots)", ", ".join(pivots), Severity.LOW,
+                                    {"pivots": pivots}))
         return ModuleResult(
-            self.name, target.value, ok=True, findings=findings,
-            new_targets=[parse_target(url)],
+            self.name, target.value, ok=True, findings=findings, new_targets=new_targets,
         )

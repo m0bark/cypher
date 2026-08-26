@@ -257,6 +257,10 @@ class ExternalToolModule(BaseModule):
             if ln.startswith("[+]") and "[-]" not in ln and "[x]" not in ln
         ]
         hits = plus if plus else [ln for ln in lines if "http" in ln.lower()]
+        # Drop homepage/no-target URLs (e.g. sherlock's "[+] Discord: https://discord.com"):
+        # a URL hit that doesn't even contain the target value is a false positive.
+        tv = target.value.lower()
+        hits = [ln for ln in hits if "http" not in ln.lower() or tv in ln.lower()]
 
         if hits:
             detail = "; ".join(hits[:40])
