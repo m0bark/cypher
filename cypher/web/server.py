@@ -214,9 +214,11 @@ def _scan_brief(scan: dict) -> str:
 
 def chat(payload: dict) -> dict:
     settings = Settings.load()
-    if not settings.anthropic_api_key:
-        return {"ok": False, "error": "No Anthropic key in .env — I can't think without one. "
-                                      "Add ANTHROPIC_API_KEY and I'll wake up."}
+    backend = settings.resolve_backend()
+    if backend == "none":
+        return {"ok": False, "error": "No AI backend. Set CYPHER_LLM=cli in .env (needs the "
+                                      "claude CLI on this machine) to run on your subscription, "
+                                      "or add an API key."}
     history = [
         {"role": m.get("role"), "content": str(m.get("content", ""))}
         for m in (payload.get("messages") or [])
@@ -225,13 +227,42 @@ def chat(payload: dict) -> dict:
     if not history:
         return {"ok": False, "error": "empty message"}
 
+    if backend == "cli":
+        return _chat_cli(history, payload.get("context") or "")
+    return _chat_api(settings, history)
+
+
+def _chat_cli(history: list, context: str) -> dict:
+    """Chat on the Claude subscription via the CLI. No tool-use auto-scan — Cypher
+    reasons over the current scan context and asks the operator to RUN if it needs data."""
+    from ..ai import claude_cli
+
+    convo = "\n".join(
+        ("OPERATOR: " if m["role"] == "user" else "CYPHER: ") + m["content"] for m in history
+    )
+    prompt = (
+        CYPHER_PERSONA
+        + "\n\n(CLI mode: you cannot run scans yourself. If you need data that isn't in the "
+        "DATA block, tell the operator to type the target in the RUN box on the right and hit "
+        "RUN — then you'll analyze it.)\n\n=== INVESTIGATION DATA ===\n"
+        + (context[:12000] or "(no scan run yet)")
+        + "\n\n=== CONVERSATION ===\n" + convo + "\nCYPHER:"
+    )
+    try:
+        return {"ok": True, "reply": claude_cli.complete(prompt) or "(silence)"}
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)}
+
+
+def _chat_api(settings, history: list) -> dict:
+    """Chat on the paid API, with tool-use so Cypher can run scans itself."""
     try:
         import anthropic
 
         client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
         msgs: list = list(history)
         last_scan = None
-        for _ in range(4):  # bounded tool-use loop
+        for _ in range(4):
             resp = client.messages.create(
                 model=settings.model, max_tokens=1200, system=CYPHER_PERSONA,
                 tools=TOOLS, messages=msgs,
@@ -252,7 +283,7 @@ def chat(payload: dict) -> dict:
                     tool_results.append({"type": "tool_result", "tool_use_id": block.id,
                                          "content": _scan_brief(scan)})
             msgs.append({"role": "user", "content": tool_results})
-        return {"ok": True, "reply": "That took more digging than expected. Ask me again.",
+        return {"ok": True, "reply": "That took more digging than expected. Ask again.",
                 "scan": last_scan}
     except Exception as exc:
         return {"ok": False, "error": str(exc)}
@@ -260,7 +291,7 @@ def chat(payload: dict) -> dict:
 
 def _config() -> dict:
     s = Settings.load()
-    return {"has_key": bool(s.anthropic_api_key), "default_vault": s.obsidian_vault or ""}
+    return {"backend": s.resolve_backend(), "default_vault": s.obsidian_vault or ""}
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -436,7 +467,9 @@ PAGE_HTML = """<!doctype html>
 const $=id=>document.getElementById(id);
 window.CTX="";
 fetch("/config").then(r=>r.json()).then(c=>{
-  $("pill").innerHTML="CYPHER "+(c.has_key?"<span class=on>ONLINE</span>":"<span class=off>ASLEEP — no key</span>");
+  const b={cli:"<span class=on>ONLINE · subscription</span>",api:"<span class=on>ONLINE · API</span>",
+    none:"<span class=off>ASLEEP — no AI backend</span>"}[c.backend]||"";
+  $("pill").innerHTML="CYPHER "+b;
 }).catch(()=>{});
 
 const HIST=[];

@@ -32,10 +32,28 @@ class Settings:
     passive_only: bool = False
     output_dir: str = DEFAULT_OUTPUT_DIR
     obsidian_vault: str | None = None
+    llm_backend: str = "auto"  # auto | api | cli | off
+
+    def resolve_backend(self) -> str:
+        """Which LLM backend to actually use: 'api' (paid key), 'cli' (Claude
+        Code / subscription), or 'none'."""
+        import shutil
+
+        has_cli = shutil.which("claude") is not None
+        if self.llm_backend == "off":
+            return "none"
+        if self.llm_backend == "cli":
+            return "cli" if has_cli else "none"
+        if self.llm_backend == "api":
+            return "api" if self.anthropic_api_key else "none"
+        # auto: prefer a paid API key, else fall back to the CLI subscription
+        if self.anthropic_api_key:
+            return "api"
+        return "cli" if has_cli else "none"
 
     @property
     def ai_enabled(self) -> bool:
-        return bool(self.anthropic_api_key)
+        return self.resolve_backend() != "none"
 
     @classmethod
     def load(cls) -> "Settings":
@@ -64,6 +82,7 @@ class Settings:
             in {"1", "true", "yes"},
             output_dir=os.environ.get("CYPHER_OUTPUT_DIR", DEFAULT_OUTPUT_DIR),
             obsidian_vault=os.environ.get("CYPHER_VAULT"),
+            llm_backend=os.environ.get("CYPHER_LLM", "auto").lower(),
         )
 
     def env_key(self, name: str) -> str | None:

@@ -183,8 +183,12 @@ class Orchestrator:
         inv.summary = _template_summary(inv, entities)
         return inv.summary
 
-    # -- anthropic client -------------------------------------------------
+    # -- completion (api or cli/subscription) -----------------------------
     def _complete(self, system: str, user: str) -> str:
+        if self.ctx.settings.resolve_backend() == "cli":
+            from . import claude_cli
+
+            return claude_cli.complete(f"{system}\n\n{user}")
         if self._client is None:
             import anthropic  # lazy
 

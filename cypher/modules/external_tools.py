@@ -217,6 +217,8 @@ class ExternalToolModule(BaseModule):
                     argv,
                     capture_output=True,
                     text=True,
+                    encoding="utf-8",
+                    errors="replace",
                     timeout=EXTERNAL_TOOL_TIMEOUT,
                     check=False,
                     cwd=workdir,
