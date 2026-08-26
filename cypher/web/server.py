@@ -352,12 +352,10 @@ PAGE_HTML = """<!doctype html>
       <button id="run" class="run">RUN</button>
     </div>
     <div class="opts">
-      <input id="key" type="password" class="keyf" placeholder="sk-ant-… (optional)">
-      <label class="chk"><input type="checkbox" id="savekey" checked> remember</label>
       <label class="chk"><input type="checkbox" id="passive"> passive</label>
       <label class="chk">depth <input id="depth" class="depth" value="1"></label>
       <label class="chk"><input type="checkbox" id="obsidian"> obsidian</label>
-      <input id="vault" class="vault" placeholder="vault path">
+      <input id="vault" class="vault" placeholder="Obsidian vault path (optional)">
       <label class="chk auth"><input type="checkbox" id="authorized"> authorized</label>
     </div>
     <div id="status" class="status"></div>
@@ -393,14 +391,12 @@ function buildNav(){
   }
 }
 buildNav();
-let HAS_KEY=false;
 fetch("/config").then(r=>r.json()).then(c=>{
-  HAS_KEY=c.has_key;
-  if(c.has_key)$("key").placeholder="✓ using saved key — leave blank";
+  if(!c.has_key)$("status").textContent="Note: no Claude key saved — using deterministic mode. Add ANTHROPIC_API_KEY to .env for AI correlation.";
   if(c.default_vault)$("vault").value=c.default_vault;
 }).catch(()=>{});
 $("run").onclick=async()=>{
-  const body={target:$("target").value,api_key:$("key").value,save_key:$("savekey").checked,
+  const body={target:$("target").value,
     passive:$("passive").checked,authorized:$("authorized").checked,personal_ok:true,
     obsidian:$("obsidian").checked,vault:$("vault").value,depth:parseInt($("depth").value)||1,
     modules:CATS[activeCat]};
