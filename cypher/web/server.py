@@ -144,7 +144,13 @@ def run_investigation(payload: dict) -> dict:
                 "skipped": r.skipped,
                 "error": r.error,
                 "findings": [
-                    {"title": f.title, "detail": f.detail, "severity": f.severity.value}
+                    {
+                        "title": f.title,
+                        "detail": f.detail,
+                        "severity": f.severity.value,
+                        "data": {k: f.data[k] for k in ("image", "bio", "url", "platform")
+                                 if k in f.data},
+                    }
                     for f in r.findings
                 ],
             }
@@ -306,6 +312,24 @@ PAGE_HTML = """<!doctype html>
   .sev{font-size:9px;text-transform:uppercase;padding:1px 6px;border-radius:4px;margin-right:8px;letter-spacing:.5px}
   .s-high{background:var(--hi);color:#2a0000}.s-medium{background:var(--med);color:#2a1a00}
   .s-low{background:var(--low);color:#00202a}.s-info{background:var(--line);color:var(--muted)}
+  /* profile confirm cards */
+  .pgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px}
+  .pcard{display:flex;gap:12px;background:var(--card2);border:1px solid var(--line);
+    border-radius:10px;padding:12px;transition:.15s}
+  .pcard.is-mine{border-color:#2a6b52;box-shadow:inset 0 0 0 1px #2a6b52}
+  .pcard.not-mine{opacity:.4}
+  .pcard img{width:56px;height:56px;border-radius:8px;object-fit:cover;background:#0a0e14;flex:none}
+  .pmeta{flex:1;min-width:0}
+  .plat{font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--accent)}
+  .pmeta b{display:block;font-size:13px;margin:1px 0}
+  .pmeta p{margin:2px 0;font-size:11.5px;color:var(--muted);overflow:hidden;
+    display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+  .pmeta a{font-size:11px;word-break:break-all}
+  .pconfirm{display:flex;flex-direction:column;gap:6px;justify-content:center}
+  .pconfirm button{background:#0c1219;border:1px solid var(--line);color:var(--muted);
+    border-radius:6px;padding:4px 8px;font:inherit;font-size:11px;cursor:pointer}
+  .pconfirm .mine:hover{border-color:#2a6b52;color:var(--ok)}
+  .pconfirm .no:hover{border-color:#6b2a2a;color:var(--hi)}
   .gate{padding:0 24px 28px;font-size:11px;color:var(--faint);max-width:760px}
   .empty{padding:60px 24px;text-align:center;color:var(--faint);font-size:13px}
   a{color:var(--accent);text-decoration:none}
@@ -347,7 +371,10 @@ const CATS={
   "All modules":null,
   "Domain":["dns_records","rdap_whois","crtsh_subdomains","wayback","http_fingerprint","whois","subfinder","amass","assetfinder","findomain","sublist3r","dnsrecon","dnsenum","fierce","dnstwist","gau","waybackurls","urlscan"],
   "Email":["email_recon","breach_check","holehe","h8mail","mosint","socialscan"],
-  "Username":["username_sites","github_recon","sherlock","maigret","socialscan"],
+  "Username":["username_sites","github_recon","sherlock","maigret","socialscan","telegram","instagram"],
+  "Instagram":["instagram"],
+  "Telegram":["telegram"],
+  "Phone":["phone_info"],
   "IP":["ip_info","rdap_whois","bgpview","shodan_host","nmap","naabu","rustscan"],
   "Web":["http_fingerprint","whatweb","wafw00f","httpx","katana","nuclei","nikto","gobuster","wpscan","sslscan"],
   "Ports":["nmap","naabu","rustscan"],
@@ -394,8 +421,31 @@ $("run").onclick=async()=>{
   $("run").disabled=false;
 };
 function esc(s){return (s||"").replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));}
+function profiles(d){
+  const out=[];
+  for(const m of d.results){for(const f of (m.findings||[])){
+    const dt=f.data||{};
+    if(dt.platform&&(dt.image||dt.bio)){
+      out.push({platform:dt.platform,name:f.detail,bio:dt.bio||"",image:dt.image||"",url:dt.url||""});
+    }
+  }}
+  return out;
+}
 function render(d){
   let h="";
+  const profs=profiles(d);
+  if(profs.length){
+    h+='<div class="panel"><h2>Is this you?<span class="pill">'+profs.length+' profiles — confirm</span></h2><div class="body"><div class="pgrid">';
+    for(const p of profs){
+      h+='<div class="pcard">'
+        +(p.image?'<img src="'+esc(p.image)+'" referrerpolicy="no-referrer" onerror="this.remove()">':'')
+        +'<div class="pmeta"><span class="plat">'+esc(p.platform)+'</span><b>'+esc(p.name)+'</b>'
+        +(p.bio?'<p>'+esc(p.bio)+'</p>':'')
+        +(p.url?'<a href="'+esc(p.url)+'" target="_blank" rel="noreferrer">'+esc(p.url)+'</a>':'')
+        +'</div><div class="pconfirm"><button class="mine">✓ mine</button><button class="no">✗ not</button></div></div>';
+    }
+    h+='</div><p style="font-size:11px;color:var(--faint);margin-top:10px">Compare the picture and bio to decide which accounts are actually yours.</p></div></div>';
+  }
   if(d.graph&&d.graph.nodes.length){
     h+='<div class="panel"><h2>Entity network<span class="pill">'+d.graph.nodes.length+' nodes / '+d.graph.links.length+' links</span></h2>';
     h+='<canvas id="graph" width="900" height="440"></canvas></div>';
@@ -442,6 +492,11 @@ function drawGraph(g){
   }
   step();
 }
+$("out").addEventListener("click",e=>{
+  const card=e.target.closest(".pcard");if(!card)return;
+  if(e.target.classList.contains("mine")){card.classList.toggle("is-mine");card.classList.remove("not-mine");}
+  if(e.target.classList.contains("no")){card.classList.toggle("not-mine");card.classList.remove("is-mine");}
+});
 $("target").addEventListener("keydown",e=>{if(e.key==="Enter")$("run").click();});
 </script>
 </body></html>"""

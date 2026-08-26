@@ -39,3 +39,19 @@ def test_empty_is_unknown():
 def test_domain_precedes_username_when_dotted():
     # A dotted token is a domain, not a username.
     assert detect_type("foo.bar") is TargetType.DOMAIN
+
+
+def test_detects_phone_with_plus_and_separators():
+    assert detect_type("+965 9988 7766") is TargetType.PHONE
+    t = parse_target("+965 9988 7766")
+    assert t.type is TargetType.PHONE
+    assert t.value == "+96599887766"
+
+
+def test_detects_bare_digit_phone():
+    assert detect_type("6502530000") is TargetType.PHONE
+
+
+def test_short_digits_not_phone():
+    # Too short to be a phone number.
+    assert detect_type("12345") is not TargetType.PHONE

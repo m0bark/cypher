@@ -19,6 +19,7 @@ class TargetType(str, Enum):
     EMAIL = "email"
     URL = "url"
     USERNAME = "username"
+    PHONE = "phone"
     ORG = "org"
     UNKNOWN = "unknown"
 
@@ -30,6 +31,12 @@ _DOMAIN_RE = re.compile(
 _EMAIL_RE = re.compile(r"^[^@\s]+@([^@\s]+\.[^@\s]+)$")
 _URL_RE = re.compile(r"^https?://", re.IGNORECASE)
 _USERNAME_RE = re.compile(r"^@?[A-Za-z0-9_][A-Za-z0-9_.-]{1,38}$")
+# Phone: optional +, then 7-15 digits, allowing spaces/dashes/dots/parens as separators.
+_PHONE_RE = re.compile(r"^\+?[0-9][0-9\s().\-]{6,20}$")
+
+
+def _phone_digits(s: str) -> str:
+    return re.sub(r"[^0-9]", "", s)
 
 
 @dataclass(frozen=True)
@@ -60,6 +67,9 @@ def detect_type(raw: str) -> TargetType:
         return TargetType.IP
     except ValueError:
         pass
+    # Phone before domain/username: mostly-digits with an optional leading +.
+    if _PHONE_RE.match(s) and 7 <= len(_phone_digits(s)) <= 15:
+        return TargetType.PHONE
     if "." in s and _DOMAIN_RE.match(s):
         return TargetType.DOMAIN
     if _USERNAME_RE.match(s):
@@ -87,6 +97,11 @@ def parse_target(raw: str) -> Target:
 
     if ttype is TargetType.IP:
         return Target(raw=s, type=TargetType.IP, value=s)
+
+    if ttype is TargetType.PHONE:
+        digits = _phone_digits(s)
+        value = ("+" + digits) if s.lstrip().startswith("+") else digits
+        return Target(raw=s, type=TargetType.PHONE, value=value)
 
     if ttype is TargetType.USERNAME:
         return Target(
