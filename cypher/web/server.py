@@ -1,9 +1,10 @@
 """A tiny localhost web UI for Cypher, built on the standard library only.
 
-Serves one page: paste a target, tick authorization, hit Run. The Anthropic key
-is built in — it loads from .env/environment automatically, and the UI can save a
-pasted key back to .env so you never paste it again. Results can also be written
-straight into an Obsidian vault.
+Serves one page: an OSINT console with a category sidebar, a search bar, a
+compact options strip, and results (entity graph + Claude correlation + findings).
+The Anthropic key is built in — it loads from .env/environment automatically, and
+the UI can save a pasted key back to .env. Results can also be written into an
+Obsidian vault.
 
 Binds to 127.0.0.1 only. The key is used for the run and only persisted to .env
 if you explicitly ask (never logged, never committed — .env is gitignored).
@@ -107,13 +108,14 @@ def run_investigation(payload: dict) -> dict:
 
     use_ai = bool(settings.anthropic_api_key) and not payload.get("no_ai")
     depth = int(payload.get("depth") or 1)
+    only = payload.get("modules") or None
 
     ctx = Context.create(settings)
     registry = discover()
     orch = Orchestrator(ctx, registry, use_ai=use_ai)
     obsidian_path = None
     try:
-        inv = orch.investigate(target, depth=depth)
+        inv = orch.investigate(target, only=only, depth=depth)
         orch.synthesize(inv)
         paths = write_report(inv, settings.output_dir)
         if payload.get("obsidian"):
@@ -217,160 +219,225 @@ PAGE_HTML = """<!doctype html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Cypher</title>
 <style>
-  :root{--bg:#0a0e14;--card:#121820;--line:#1f2a37;--text:#d7e0ea;--muted:#7c8b9c;
-        --accent:#39d0d8;--hi:#ff5d5d;--med:#ffb454;--low:#8ad4ff;--ok:#57d9a3}
+  :root{
+    --bg:#080b11;--side:#0b0f16;--card:#111823;--card2:#0d141d;--line:#1c2836;
+    --text:#dbe4ee;--muted:#6f8195;--faint:#455060;
+    --accent:#39d0d8;--accent2:#7b8cff;
+    --hi:#ff5d5d;--med:#ffb454;--low:#8ad4ff;--ok:#57d9a3;
+  }
   *{box-sizing:border-box}
+  html,body{height:100%}
   body{margin:0;background:var(--bg);color:var(--text);
-       font:15px/1.5 ui-monospace,"Cascadia Code",Consolas,monospace}
-  .wrap{max-width:900px;margin:0 auto;padding:32px 20px 80px}
-  h1{font-size:28px;letter-spacing:2px;margin:0 0 2px}
-  h1 span{color:var(--accent)}
-  .sub{color:var(--muted);margin:0 0 24px}
-  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:20px;margin-bottom:18px}
-  label{display:block;color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:1px;margin:12px 0 6px}
-  input[type=text],input[type=password]{width:100%;background:#0c1219;border:1px solid var(--line);
-       color:var(--text);border-radius:8px;padding:12px;font:inherit}
-  input:focus{outline:none;border-color:var(--accent)}
-  .hint{font-size:12px;color:var(--muted);margin:6px 0 0}
-  .hint.good{color:var(--ok)}
-  .row{display:flex;gap:20px;flex-wrap:wrap;align-items:center;margin-top:12px}
-  .row label{margin:0;text-transform:none;letter-spacing:0;color:var(--text);font-size:14px;display:flex;align-items:center;gap:8px}
-  button{margin-top:20px;background:var(--accent);color:#04252a;border:0;border-radius:8px;
-       padding:14px 22px;font:inherit;font-weight:700;letter-spacing:1px;cursor:pointer;width:100%}
-  button:disabled{opacity:.5;cursor:not-allowed}
-  .gate{font-size:12px;color:var(--muted);border-left:2px solid var(--line);padding-left:12px;margin-top:8px}
-  #status{margin-top:16px;color:var(--muted);min-height:22px}
-  .spin{display:inline-block;width:14px;height:14px;border:2px solid var(--line);border-top-color:var(--accent);
-        border-radius:50%;animation:s .8s linear infinite;vertical-align:-2px;margin-right:8px}
+    font:14px/1.55 ui-monospace,"Cascadia Code",Consolas,monospace}
+  ::-webkit-scrollbar{width:10px;height:10px}
+  ::-webkit-scrollbar-thumb{background:#1c2836;border-radius:6px}
+  .app{display:grid;grid-template-columns:236px 1fr;height:100vh}
+
+  /* ---- sidebar ---- */
+  .side{background:var(--side);border-right:1px solid var(--line);display:flex;
+    flex-direction:column;overflow:hidden}
+  .brand{padding:20px 20px 14px;font-size:20px;letter-spacing:3px;font-weight:700}
+  .brand i{color:var(--accent);font-style:normal}
+  .brand small{display:block;font-size:10px;letter-spacing:2px;color:var(--muted);
+    font-weight:400;margin-top:2px}
+  .nav{padding:6px 10px;overflow-y:auto;flex:1}
+  .nav-item{display:flex;justify-content:space-between;align-items:center;
+    padding:9px 12px;border-radius:8px;color:var(--muted);cursor:pointer;
+    font-size:13px;letter-spacing:.3px;user-select:none;transition:.12s}
+  .nav-item:hover{background:#0f1620;color:var(--text)}
+  .nav-item.active{background:#0f1a24;color:var(--text);
+    box-shadow:inset 2px 0 0 var(--accent)}
+  .nav-item b{font-weight:600;font-size:11px;color:var(--faint);
+    background:#0c1219;border:1px solid var(--line);border-radius:20px;padding:1px 8px}
+  .nav-item.active b{color:var(--accent);border-color:#22424a}
+  .side-foot{padding:14px 20px;border-top:1px solid var(--line);
+    font-size:10px;color:var(--faint);letter-spacing:.5px}
+
+  /* ---- main ---- */
+  .main{overflow-y:auto;display:flex;flex-direction:column}
+  .topbar{position:sticky;top:0;z-index:5;background:linear-gradient(180deg,var(--bg),rgba(8,11,17,.9));
+    backdrop-filter:blur(6px);border-bottom:1px solid var(--line);
+    padding:16px 24px 12px;display:flex;gap:12px;align-items:center}
+  .search{flex:1;background:var(--card2);border:1px solid var(--line);color:var(--text);
+    border-radius:10px;padding:14px 16px;font:inherit;font-size:15px}
+  .search:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(57,208,216,.12)}
+  .run{background:var(--accent);color:#04252a;border:0;border-radius:10px;
+    padding:0 26px;height:48px;font:inherit;font-weight:700;letter-spacing:2px;cursor:pointer}
+  .run:hover{filter:brightness(1.08)} .run:disabled{opacity:.5;cursor:not-allowed}
+
+  .opts{display:flex;flex-wrap:wrap;gap:14px;align-items:center;
+    padding:12px 24px;border-bottom:1px solid var(--line);color:var(--muted);font-size:12px}
+  .opts .keyf{background:var(--card2);border:1px solid var(--line);color:var(--text);
+    border-radius:8px;padding:8px 10px;font:inherit;font-size:12px;width:230px}
+  .opts .vault{background:var(--card2);border:1px solid var(--line);color:var(--text);
+    border-radius:8px;padding:8px 10px;font:inherit;font-size:12px;width:190px}
+  .opts input:focus{outline:none;border-color:var(--accent)}
+  .chk{display:flex;align-items:center;gap:6px;color:var(--muted);white-space:nowrap}
+  .chk input{accent-color:var(--accent)}
+  .depth{width:42px;background:var(--card2);border:1px solid var(--line);color:var(--text);
+    border-radius:6px;padding:4px 6px;font:inherit;text-align:center}
+  .auth{color:var(--text)}
+
+  .status{padding:12px 24px;color:var(--muted);min-height:20px;font-size:13px}
+  .spin{display:inline-block;width:13px;height:13px;border:2px solid var(--line);
+    border-top-color:var(--accent);border-radius:50%;animation:s .8s linear infinite;
+    vertical-align:-2px;margin-right:8px}
   @keyframes s{to{transform:rotate(360deg)}}
-  .summary{white-space:pre-wrap;background:#0c1219;border:1px solid var(--line);border-radius:8px;padding:16px;margin-top:12px}
-  .mod{border:1px solid var(--line);border-radius:8px;margin-top:10px;overflow:hidden}
-  .mod h3{margin:0;padding:10px 14px;background:#0e141c;font-size:14px;display:flex;justify-content:space-between}
-  .tag{font-size:11px;padding:2px 8px;border-radius:20px}
-  .t-ok{background:rgba(87,217,163,.15);color:var(--ok)} .t-skip{background:#0c1219;color:var(--muted)}
-  .t-err{background:rgba(255,93,93,.15);color:var(--hi)}
-  .f{padding:8px 14px;border-top:1px solid var(--line);font-size:13px}
-  .f b{color:var(--text)} .sev{font-size:10px;text-transform:uppercase;padding:1px 6px;border-radius:4px;margin-right:8px}
+
+  .out{padding:4px 24px 40px;display:flex;flex-direction:column;gap:16px}
+  .panel{background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+  .panel>h2{margin:0;padding:12px 16px;font-size:12px;letter-spacing:1.5px;text-transform:uppercase;
+    color:var(--muted);border-bottom:1px solid var(--line);background:var(--card2);
+    display:flex;justify-content:space-between;align-items:center}
+  .panel>h2 .pill{font-size:10px;color:var(--accent);border:1px solid #22424a;border-radius:20px;padding:1px 10px}
+  .panel .body{padding:16px}
+  canvas#graph{width:100%;height:440px;display:block;background:var(--card2)}
+  .summary{white-space:pre-wrap;font-size:13.5px;color:#c9d5e2}
+  .mod{border:1px solid var(--line);border-radius:9px;margin-top:10px;overflow:hidden}
+  .mod:first-child{margin-top:0}
+  .mod h3{margin:0;padding:9px 13px;background:var(--card2);font-size:13px;
+    display:flex;justify-content:space-between;align-items:center;cursor:default}
+  .tag{font-size:10px;padding:2px 9px;border-radius:20px;letter-spacing:.5px}
+  .t-ok{background:rgba(87,217,163,.14);color:var(--ok)}
+  .t-skip{background:#0c1219;color:var(--faint)}
+  .t-err{background:rgba(255,93,93,.14);color:var(--hi)}
+  .f{padding:8px 13px;border-top:1px solid var(--line);font-size:12.5px;color:#bac7d4}
+  .f b{color:var(--text)}
+  .sev{font-size:9px;text-transform:uppercase;padding:1px 6px;border-radius:4px;margin-right:8px;letter-spacing:.5px}
   .s-high{background:var(--hi);color:#2a0000}.s-medium{background:var(--med);color:#2a1a00}
   .s-low{background:var(--low);color:#00202a}.s-info{background:var(--line);color:var(--muted)}
-  a{color:var(--accent)}
+  .gate{padding:0 24px 28px;font-size:11px;color:var(--faint);max-width:760px}
+  .empty{padding:60px 24px;text-align:center;color:var(--faint);font-size:13px}
+  a{color:var(--accent);text-decoration:none}
+
+  @media(max-width:760px){
+    .app{grid-template-columns:1fr}
+    .side{display:none}
+  }
 </style></head>
-<body><div class="wrap">
-  <h1>CY<span>PH</span>ER</h1>
-  <p class="sub">AI-orchestrated OSINT — paste a target, Claude does the rest.</p>
-
-  <div class="card">
-    <label>Target — domain, IP, email, URL, or username</label>
-    <input id="target" type="text" placeholder="example.com" autofocus>
-
-    <label>Anthropic API key</label>
-    <input id="key" type="password" placeholder="sk-ant-...">
-    <p class="hint" id="keyhint"></p>
-    <div class="row">
-      <label><input type="checkbox" id="savekey" checked> Remember this key (save to .env)</label>
+<body>
+<div class="app">
+  <aside class="side">
+    <div class="brand">CY<i>PH</i>ER<small>OSINT CONSOLE</small></div>
+    <div class="nav" id="nav"></div>
+    <div class="side-foot">authorized &amp; defensive use only</div>
+  </aside>
+  <main class="main">
+    <div class="topbar">
+      <input id="target" class="search" placeholder="domain · IP · email · URL · username" autofocus>
+      <button id="run" class="run">RUN</button>
     </div>
-
-    <div class="row">
-      <label><input type="checkbox" id="passive"> Passive only (no active probing)</label>
-      <label>Depth <input type="text" id="depth" value="1" style="width:52px"> <span class="hint" style="margin:0">1 = target only, 2 = follow discoveries</span></label>
+    <div class="opts">
+      <input id="key" type="password" class="keyf" placeholder="sk-ant-… (optional)">
+      <label class="chk"><input type="checkbox" id="savekey" checked> remember</label>
+      <label class="chk"><input type="checkbox" id="passive"> passive</label>
+      <label class="chk">depth <input id="depth" class="depth" value="1"></label>
+      <label class="chk"><input type="checkbox" id="obsidian"> obsidian</label>
+      <input id="vault" class="vault" placeholder="vault path">
+      <label class="chk auth"><input type="checkbox" id="authorized"> authorized</label>
     </div>
-
-    <div class="row">
-      <label><input type="checkbox" id="obsidian"> Also save to Obsidian vault</label>
-    </div>
-    <input id="vault" type="text" placeholder="path to your Obsidian vault (e.g. /home/vio/Vault)">
-
-    <div class="row">
-      <label><input type="checkbox" id="authorized"> I am authorized to assess this target</label>
-    </div>
-    <p class="gate">Cypher gathers only open-source data. Use it on assets you own or are permitted to
-      assess, or for your own defensive checks — not to profile private individuals.</p>
-
-    <button id="run">RUN INVESTIGATION</button>
-    <div id="status"></div>
-  </div>
-
-  <div id="out"></div>
+    <div id="status" class="status"></div>
+    <div id="out" class="out"><div class="empty">Enter a target and press RUN. Pick a category on the left to scope the modules.</div></div>
+    <div class="gate">Cypher gathers only open-source data. Use it on assets you own or are permitted to assess, or for your own defensive checks — not to profile private individuals.</div>
+  </main>
 </div>
 <script>
 const $=id=>document.getElementById(id);
+const CATS={
+  "All modules":null,
+  "Domain":["dns_records","rdap_whois","crtsh_subdomains","wayback","http_fingerprint","whois","subfinder","amass","assetfinder","findomain","sublist3r","dnsrecon","dnsenum","fierce","dnstwist","gau","waybackurls","urlscan"],
+  "Email":["email_recon","breach_check","holehe","h8mail","mosint","socialscan"],
+  "Username":["username_sites","github_recon","sherlock","maigret","socialscan"],
+  "IP":["ip_info","rdap_whois","bgpview","shodan_host","nmap","naabu","rustscan"],
+  "Web":["http_fingerprint","whatweb","wafw00f","httpx","katana","nuclei","nikto","gobuster","wpscan","sslscan"],
+  "Ports":["nmap","naabu","rustscan"],
+  "Breach":["breach_check","h8mail","holehe"]
+};
+let activeCat="All modules";
+function buildNav(){
+  const nav=$("nav");nav.innerHTML="";
+  for(const name in CATS){
+    const d=document.createElement("div");
+    d.className="nav-item"+(name===activeCat?" active":"");
+    const count=CATS[name]?CATS[name].length:43;
+    d.innerHTML='<span>'+name+'</span><b>'+count+'</b>';
+    d.onclick=()=>{activeCat=name;buildNav();};
+    nav.appendChild(d);
+  }
+}
+buildNav();
 let HAS_KEY=false;
 fetch("/config").then(r=>r.json()).then(c=>{
   HAS_KEY=c.has_key;
-  if(c.has_key){$("keyhint").textContent="✓ A key is already saved — leave this blank to use it.";$("keyhint").className="hint good";$("key").placeholder="using saved key";}
-  else{$("keyhint").textContent="Paste once and tick Remember; blank = deterministic mode (no AI).";}
-  if(c.default_vault){$("vault").value=c.default_vault;}
+  if(c.has_key)$("key").placeholder="✓ using saved key — leave blank";
+  if(c.default_vault)$("vault").value=c.default_vault;
 }).catch(()=>{});
 $("run").onclick=async()=>{
   const body={target:$("target").value,api_key:$("key").value,save_key:$("savekey").checked,
     passive:$("passive").checked,authorized:$("authorized").checked,personal_ok:true,
-    obsidian:$("obsidian").checked,vault:$("vault").value,depth:parseInt($("depth").value)||1};
+    obsidian:$("obsidian").checked,vault:$("vault").value,depth:parseInt($("depth").value)||1,
+    modules:CATS[activeCat]};
   if(!body.target){$("status").textContent="Enter a target.";return;}
-  if(!body.authorized){$("status").textContent="Tick the authorization box to continue.";return;}
+  if(!body.authorized){$("status").textContent="Tick 'authorized' to continue.";return;}
   $("run").disabled=true;$("out").innerHTML="";
-  $("status").innerHTML='<span class="spin"></span>Running modules and synthesizing…';
+  $("status").innerHTML='<span class="spin"></span>Running '+activeCat.toLowerCase()+' modules and connecting the dots…';
   try{
     const r=await fetch("/scan",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
     const d=await r.json();
     if(!d.ok){$("status").textContent="✗ "+d.error;$("run").disabled=false;return;}
-    let msg="✓ Done — "+d.results.length+" modules. Report: "+(d.report_path||"reports/");
-    if(d.obsidian_path)msg+=" | Obsidian: "+d.obsidian_path;
-    if(d.saved_key)msg+=" | key saved";
+    let msg="✓ "+d.results.length+" modules · "+(d.ai_used?"Claude analysis":"deterministic")+" · report saved";
+    if(d.obsidian_path)msg+=" · Obsidian ✓";
+    if(d.saved_key)msg+=" · key saved";
     $("status").textContent=msg;
     render(d);
-  }catch(e){$("status").textContent="✗ "+e;}
+  }catch(e){$("status").textContent="✗ "+e;$("out").innerHTML="";}
   $("run").disabled=false;
 };
 function esc(s){return (s||"").replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));}
 function render(d){
   let h="";
   if(d.graph&&d.graph.nodes.length){
-    h+='<div class="card"><label>Entity graph — '+d.graph.nodes.length+' nodes / '+d.graph.links.length+' links</label>';
-    h+='<canvas id="graph" width="860" height="440" style="width:100%;border:1px solid var(--line);border-radius:8px;background:#0c1219"></canvas></div>';
+    h+='<div class="panel"><h2>Entity network<span class="pill">'+d.graph.nodes.length+' nodes / '+d.graph.links.length+' links</span></h2>';
+    h+='<canvas id="graph" width="900" height="440"></canvas></div>';
   }
-  h+='<div class="card"><label>Intelligence summary'+(d.ai_used?" (Claude)":" (deterministic)")+'</label>';
-  h+='<div class="summary">'+esc(d.summary)+'</div></div>';
-  h+='<div class="card"><label>Module results — plan: '+esc((d.plan||[]).join(", "))+'</label>';
+  h+='<div class="panel"><h2>Intelligence summary<span class="pill">'+(d.ai_used?"Claude":"deterministic")+'</span></h2><div class="body summary">'+esc(d.summary)+'</div></div>';
+  h+='<div class="panel"><h2>Module results<span class="pill">'+esc((d.plan||[]).join(" · "))+'</span></h2><div class="body">';
   for(const m of d.results){
-    const cls=m.skipped?"t-skip":(m.ok?"t-ok":"t-err");
-    const tag=m.skipped?"skip":(m.ok?"ok":"err");
+    const cls=m.skipped?"t-skip":(m.ok?"t-ok":"t-err"),tag=m.skipped?"skip":(m.ok?"ok":"err");
     h+='<div class="mod"><h3><span>'+esc(m.module)+'</span><span class="tag '+cls+'">'+tag+'</span></h3>';
-    if(m.error){h+='<div class="f">'+esc(m.error)+'</div>';}
-    for(const f of m.findings){
-      h+='<div class="f"><span class="sev s-'+f.severity+'">'+f.severity+'</span><b>'+esc(f.title)+'</b> — '+esc(f.detail)+'</div>';
-    }
+    if(m.error)h+='<div class="f">'+esc(m.error)+'</div>';
+    for(const f of m.findings)h+='<div class="f"><span class="sev s-'+f.severity+'">'+f.severity+'</span><b>'+esc(f.title)+'</b> — '+esc(f.detail)+'</div>';
     h+='</div>';
   }
-  h+='</div>';
+  h+='</div></div>';
   $("out").innerHTML=h;
   if(d.graph&&d.graph.nodes.length)drawGraph(d.graph);
 }
 let _raf=null;
 function drawGraph(g){
-  const cv=$("graph"); if(!cv)return;
+  const cv=$("graph");if(!cv)return;
   const ctx=cv.getContext("2d"),W=cv.width,H=cv.height;
-  const col={domain:"#8ad4ff",ip:"#57d9a3",email:"#ffb454",url:"#39d0d8",username:"#c39bff",module:"#7c8b9c"};
+  const col={domain:"#8ad4ff",ip:"#57d9a3",email:"#ffb454",url:"#39d0d8",username:"#b79bff",module:"#6f8195"};
   const rootId=g.nodes[0].id;
-  const nodes=g.nodes.map(n=>({...n,x:W/2+(Math.random()-.5)*220,y:H/2+(Math.random()-.5)*220,vx:0,vy:0}));
-  const idx={}; nodes.forEach((n,i)=>idx[n.id]=i);
+  const nodes=g.nodes.map(n=>({...n,x:W/2+(Math.random()-.5)*240,y:H/2+(Math.random()-.5)*240,vx:0,vy:0}));
+  const idx={};nodes.forEach((n,i)=>idx[n.id]=i);
   const links=g.links.filter(l=>l.source in idx&&l.target in idx);
   if(_raf)cancelAnimationFrame(_raf);
   function step(){
     for(let i=0;i<nodes.length;i++)for(let j=i+1;j<nodes.length;j++){
-      const a=nodes[i],b=nodes[j];let dx=a.x-b.x,dy=a.y-b.y,d=Math.hypot(dx,dy)||1;
-      const f=1400/(d*d);dx/=d;dy/=d;a.vx+=dx*f;a.vy+=dy*f;b.vx-=dx*f;b.vy-=dy*f;}
+      const a=nodes[i],b=nodes[j];let dx=a.x-b.x,dy=a.y-b.y,dd=Math.hypot(dx,dy)||1,f=1500/(dd*dd);
+      dx/=dd;dy/=dd;a.vx+=dx*f;a.vy+=dy*f;b.vx-=dx*f;b.vy-=dy*f;}
     for(const l of links){const a=nodes[idx[l.source]],b=nodes[idx[l.target]];
-      let dx=b.x-a.x,dy=b.y-a.y,d=Math.hypot(dx,dy)||1,f=(d-90)*0.02;
-      dx/=d;dy/=d;a.vx+=dx*f;a.vy+=dy*f;b.vx-=dx*f;b.vy-=dy*f;}
-    for(const n of nodes){n.vx+=(W/2-n.x)*0.002;n.vy+=(H/2-n.y)*0.002;
-      n.vx*=0.85;n.vy*=0.85;n.x+=n.vx;n.y+=n.vy;}
-    ctx.clearRect(0,0,W,H);ctx.strokeStyle="#1f2a37";ctx.lineWidth=1;
+      let dx=b.x-a.x,dy=b.y-a.y,dd=Math.hypot(dx,dy)||1,f=(dd-95)*.02;
+      dx/=dd;dy/=dd;a.vx+=dx*f;a.vy+=dy*f;b.vx-=dx*f;b.vy-=dy*f;}
+    for(const n of nodes){n.vx+=(W/2-n.x)*.002;n.vy+=(H/2-n.y)*.002;n.vx*=.85;n.vy*=.85;n.x+=n.vx;n.y+=n.vy;}
+    ctx.clearRect(0,0,W,H);ctx.strokeStyle="#1c2836";ctx.lineWidth=1;
     for(const l of links){const a=nodes[idx[l.source]],b=nodes[idx[l.target]];
       ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.stroke();}
     ctx.font="10px ui-monospace,monospace";
     for(const n of nodes){const r=n.id===rootId?10:(n.group==="module"?4:6);
-      ctx.fillStyle=col[n.group]||"#d7e0ea";ctx.beginPath();ctx.arc(n.x,n.y,r,0,7);ctx.fill();
-      ctx.fillStyle="#8ba0b4";ctx.fillText((n.label||"").slice(0,24),n.x+r+3,n.y+3);}
+      ctx.fillStyle=col[n.group]||"#dbe4ee";ctx.beginPath();ctx.arc(n.x,n.y,r,0,7);ctx.fill();
+      ctx.fillStyle="#8093a6";ctx.fillText((n.label||"").slice(0,26),n.x+r+3,n.y+3);}
     _raf=requestAnimationFrame(step);
   }
   step();
