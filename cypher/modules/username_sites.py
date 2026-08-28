@@ -15,9 +15,8 @@ from ..core.context import Context
 from ..core.module import BaseModule, Finding, ModuleResult, Severity
 from ..core.target import Target, TargetType, parse_target
 
-# A handle that should not exist on any platform — the control.
 CONTROL = "zqx9no7user000zz"
-LEN_DELTA = 600  # min content-length difference to call two 200s "different"
+LEN_DELTA = 600
 
 SITES: list[dict] = [
     {"name": "GitHub", "url": "https://github.com/{}"},
@@ -102,7 +101,6 @@ class UsernameSites(BaseModule):
         if "absent" in site:
             return "found" if (resp.status_code == 200 and site["absent"] not in text) else "no"
 
-        # Status-only site: a control request separates real hits from soft-404s.
         if resp.status_code != 200:
             return "no"
         try:
@@ -110,8 +108,7 @@ class UsernameSites(BaseModule):
         except Exception:
             return "maybe"
         if ctrl.status_code >= 400:
-            return "found"  # control 404s but target 200s -> real account
-        # Both 200 (soft-404 platform): only trust a large content difference.
+            return "found"
         if abs(len(text) - len(ctrl.text or "")) > LEN_DELTA:
             return "found"
         return "maybe"

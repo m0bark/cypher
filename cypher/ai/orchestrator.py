@@ -77,7 +77,6 @@ class Orchestrator:
         self.use_ai = use_ai and ctx.settings.ai_enabled
         self._client = None
 
-    # -- planning ---------------------------------------------------------
     def plan(self, target: Target, only: list[str] | None = None) -> tuple[list[str], str]:
         applicable = self.registry.applicable(target)
         if self.ctx.settings.passive_only:
@@ -93,7 +92,7 @@ class Orchestrator:
         if self.use_ai:
             try:
                 return self._ai_plan(target, applicable)
-            except Exception as exc:  # fall back, never hard-fail on AI
+            except Exception as exc:
                 return self._passive_first(applicable), f"(AI planner unavailable: {exc})"
         return self._passive_first(applicable), "Deterministic plan: all applicable modules, passive first."
 
@@ -115,7 +114,6 @@ class Orchestrator:
             plan = self._passive_first(applicable)
         return plan, data.get("reasoning", "")
 
-    # -- execution --------------------------------------------------------
     def investigate(
         self, target: Target, only: list[str] | None = None, depth: int = 1
     ) -> Investigation:
@@ -126,7 +124,6 @@ class Orchestrator:
         self.ctx.seen.add(str(target))
         self._run_plan(target, plan, inv)
 
-        # Optional one-level expansion into newly discovered targets.
         if depth > 1:
             frontier = self._collect_new_targets(inv.results)
             for nt in frontier:
@@ -135,7 +132,6 @@ class Orchestrator:
                 self.ctx.seen.add(str(nt))
                 inv.expanded_targets.append(str(nt))
                 sub_plan, _ = self.plan(nt, only=only)
-                # passive-only expansion to keep breadth cheap and safe
                 sub_plan = [
                     n for n in sub_plan
                     if not getattr(self.registry.get(n), "contacts_target", False)
@@ -167,30 +163,34 @@ class Orchestrator:
                     out.append(nt)
         return out
 
-    # -- synthesis --------------------------------------------------------
     def synthesize(self, inv: Investigation) -> str:
         payload = inv.findings_payload()
         entities = inv.entity_map()
         if self.use_ai and payload:
             try:
-                inv.summary = self._complete(
-                    prompts.SYNTH_SYSTEM,
-                    prompts.synth_user(str(inv.target), payload, entities),
+                from ..report.scorecard import score_exposure
+
+                sc = score_exposure(inv)
+                user = prompts.synth_user(str(inv.target), payload, entities)
+                user += (
+                    f"\n\n=== EXPOSURE SCORECARD ===\nScore {sc['score']}/100, grade "
+                    f"{sc['grade']}. Factors: {'; '.join(sc['factors']) or 'none'}. "
+                    "Open your briefing by stating this grade in one line, then justify it."
                 )
+                inv.summary = self._complete(prompts.SYNTH_SYSTEM, user)
                 return inv.summary
             except Exception:
                 pass
         inv.summary = _template_summary(inv, entities)
         return inv.summary
 
-    # -- completion (api or cli/subscription) -----------------------------
     def _complete(self, system: str, user: str) -> str:
         if self.ctx.settings.resolve_backend() == "cli":
             from . import claude_cli
 
             return claude_cli.complete(f"{system}\n\n{user}")
         if self._client is None:
-            import anthropic  # lazy
+            import anthropic
 
             self._client = anthropic.Anthropic(api_key=self.ctx.settings.anthropic_api_key)
         resp = self._client.messages.create(

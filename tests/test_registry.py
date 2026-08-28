@@ -44,7 +44,7 @@ def test_applicable_filters_by_type():
     domain = parse_target("example.com")
     names = {m.name for m in reg.applicable(domain)}
     assert "dns_records" in names
-    assert "github_recon" not in names  # username/org only
+    assert "github_recon" not in names
 
 
 def test_nmap_marked_active():

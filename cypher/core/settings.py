@@ -32,7 +32,7 @@ class Settings:
     passive_only: bool = False
     output_dir: str = DEFAULT_OUTPUT_DIR
     obsidian_vault: str | None = None
-    llm_backend: str = "auto"  # auto | api | cli | off
+    llm_backend: str = "auto"
 
     def resolve_backend(self) -> str:
         """Which LLM backend to actually use: 'api' (paid key), 'cli' (Claude
@@ -46,7 +46,6 @@ class Settings:
             return "cli" if has_cli else "none"
         if self.llm_backend == "api":
             return "api" if self.anthropic_api_key else "none"
-        # auto: prefer a paid API key, else fall back to the CLI subscription
         if self.anthropic_api_key:
             return "api"
         return "cli" if has_cli else "none"
@@ -100,7 +99,7 @@ class Settings:
 def _load_dotenv() -> None:
     """Best-effort .env loading; a hard dependency is not required."""
     try:
-        from dotenv import load_dotenv  # type: ignore
+        from dotenv import load_dotenv
     except ImportError:
         return
     load_dotenv()

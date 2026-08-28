@@ -19,7 +19,7 @@ class DnsRecords(BaseModule):
 
     def run(self, target: Target, ctx: Context) -> ModuleResult:
         try:
-            import dns.resolver  # lazy
+            import dns.resolver
         except ImportError:
             return ModuleResult.failure(
                 self.name, target.value, "dnspython not installed (pip install dnspython)"

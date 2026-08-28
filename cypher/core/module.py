@@ -80,7 +80,7 @@ class BaseModule(ABC):
         return target.type in self.applies_to
 
     @abstractmethod
-    def run(self, target: Target, ctx: "Context") -> ModuleResult:  # pragma: no cover
+    def run(self, target: Target, ctx: "Context") -> ModuleResult:
         ...
 
     def describe(self) -> dict:

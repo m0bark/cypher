@@ -44,7 +44,7 @@ def discover() -> Registry:
         full = f"cypher.modules.{info.name}"
         try:
             importlib.import_module(full)
-        except Exception as exc:  # optional dep missing, etc.
+        except Exception as exc:
             registry.load_errors[info.name] = f"{type(exc).__name__}: {exc}"
 
     for cls in _all_subclasses(BaseModule):

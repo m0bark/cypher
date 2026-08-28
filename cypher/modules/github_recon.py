@@ -57,7 +57,6 @@ class GithubRecon(BaseModule):
                         Severity.INFO, {"languages": dict(top)})
             )
 
-        # Pivots: turn linked profile fields into new targets to chase.
         new_targets = []
         pivots = []
         blog = (profile.get("blog") or "").strip()

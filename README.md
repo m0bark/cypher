@@ -1,73 +1,80 @@
 # Cypher
 
-**AI-orchestrated OSINT framework.** Pluggable modules self-register, an
-orchestrator (optionally Claude) decides which modules to run against a target,
-and the collected findings are synthesized into one report — Markdown + JSON.
-
-Cypher is the brain; your installed tooling (including the Kali OSINT suite) are
+**AI-orchestrated OSINT console.** You talk to Cypher — an analyst persona — in a
+chat-first web UI. It picks the right modules for a target, runs them, correlates
+the findings, and briefs you back. Pluggable modules self-register; the Kali
+toolchain plugs in when present. Cypher is the brain, your installed tooling is
 the hands.
 
 ## Authorized use only
 
-Cypher gathers only open-source, publicly available data — but that does not make
+Cypher gathers only open-source, publicly available data — that does not make
 every use acceptable. Use it on:
 
 - infrastructure and accounts **you own** or are **explicitly authorized** to assess (a pentest scope, a client engagement);
-- your **own / your org's** exposure (defensive self-check).
+- your **own / your org's** exposure (a defensive self-check).
 
 **Do not** use it to profile, locate, or build a dossier on a private individual
 who has not consented. Cypher flags person-like targets and makes you confirm
 authorization before it proceeds. That gate is a conscience speed bump, not a
 security control — the responsibility is yours.
 
-## Install
+## Quick start
 
-```bash
-cd D:\cypher
-python -m venv .venv
-.venv\Scripts\activate           # Windows;  source .venv/bin/activate on Linux
-pip install -e ".[all]"          # core + AI + rich + dotenv + pytest
-# minimal: pip install -e .      # core only (httpx, dnspython)
-```
+**Windows** — double-click `run.bat`.
+**Linux / Kali** — `./run.sh`.
 
-Copy `.env.example` to `.env` and fill in what you have (all optional). With
-`ANTHROPIC_API_KEY` set, Claude plans and writes the report; without it, Cypher
-uses a deterministic plan and a templated summary.
+The first launch builds a virtual environment, installs Cypher and the common
+OSINT tools, then opens the console at `http://127.0.0.1:8765`. It binds to
+localhost only.
 
-## Usage
+## AI on your Claude subscription (no API credits)
+
+Cypher's chat and briefings run on your existing Claude Code subscription via the
+`claude` CLI — no per-token API billing. The launcher writes `CYPHER_LLM=cli` to
+`.env` for you; just have the CLI installed and logged in (`claude` once). Prefer
+the paid API instead? Put `ANTHROPIC_API_KEY=...` in `.env`. With neither, scans,
+the entity graph, the scorecard and the profile cards all still work — only the
+written briefing falls back to a template.
+
+## What it does
+
+- **Chat-first** — describe a target in plain language; Cypher runs the scan itself and briefs you.
+- **Auto target typing** — domain, IP, email, URL, username, phone, name, image, or crypto address.
+- **Entity graph** — live force-directed map of what connects to what.
+- **Exposure scorecard** — a 0–100 grade with the factors behind it.
+- **Verify list** — ambiguous profile hits become a yes / maybe / no checklist instead of false certainty.
+- **Timeline** — dated findings (registrations, breaches) assembled into a chronology.
+- **Remove-me** — opt-out and account-deletion links for what a self-scan surfaced.
+- **Footprint diff** — a re-scan shows what appeared or vanished since last time.
+- **HTML report** — one-click standalone report of any scan.
+
+## CLI
+
+The console is optional — everything is scriptable:
 
 ```bash
 cypher modules                       # list modules + status
 cypher scan example.com              # full run (asks for authorization)
 cypher scan example.com --passive    # skip modules that touch the target
-cypher scan example.com --no-ai      # deterministic, no API calls
 cypher scan 8.8.8.8 --modules rdap_whois,ip_info
-cypher scan user@example.com --depth 2   # expand into discovered domains
-cypher scan someuser                 # username -> github, sherlock, ...
+cypher scan user@example.com --depth 2   # expand into discovered entities
 ```
 
 Reports are written to `reports/<target>.md` and `.json`.
 
-## Built-in modules (no external tools needed)
+## Modules
 
-| Module | Target | What it does |
-|---|---|---|
-| `dns_records` | domain | A/AAAA/MX/NS/TXT/SOA/CNAME, SPF hint |
-| `rdap_whois` | domain, ip | Registration data via RDAP |
-| `crtsh_subdomains` | domain | Subdomains from certificate transparency (passive) |
-| `http_fingerprint` | domain, url, ip | Status, server, security headers, title (active) |
-| `ip_info` | ip | Geolocation + network owner/ASN |
-| `wayback` | domain | Historical URLs from the Internet Archive |
-| `github_recon` | username, org | Public GitHub profile + repos |
-| `email_recon` | email | MX presence + Gravatar (passive) |
-| `breach_check` | email | Have I Been Pwned (needs `HIBP_API_KEY`) |
+Built-in (no external tools needed) cover DNS/RDAP/WHOIS, certificate-transparency
+subdomains, HTTP fingerprinting, IP geolocation, Wayback history, GitHub recon,
+email + breach checks (Have I Been Pwned), username enumeration, phone intel,
+Telegram / Instagram / Discord lookups, Google dorks, reverse-image links, and
+public blockchain lookup for BTC/ETH addresses.
 
-## External tool adapters (Kali toolchain)
-
-If these binaries are on `PATH`, Cypher drives them and folds their output into
-the report; if not, that module cleanly reports "install X".
-
-`theHarvester`, `amass`, `subfinder`, `whois`, `nmap` (active), `holehe`, `sherlock`.
+External-tool adapters drive the Kali suite when the binaries are on `PATH`
+(`theHarvester`, `amass`, `subfinder`, `nmap`, `sherlock`, `maigret`, `holehe`,
+`nuclei`, and more); if a tool is missing, that module cleanly reports how to
+install it.
 
 ## Architecture
 
@@ -78,11 +85,11 @@ target string ─▶ parse_target ─▶ scope gate ─▶ Orchestrator
                               registry ─▶ modules run ─▶ Context (findings)
                                                    │ synthesize (Claude or template)
                                                    ▼
-                                        report/renderer ─▶ .md + .json
+                                report/renderer ─▶ .md + .json  ·  web console
 ```
 
 Add a module: drop a `BaseModule` subclass in `cypher/modules/`; the registry
-discovers it and the AI planner can select it. Keep heavy imports inside `run()`.
+discovers it and the planner can select it. Keep heavy imports inside `run()`.
 
 ## Tests
 

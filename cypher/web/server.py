@@ -21,9 +21,12 @@ from ..core.registry import discover
 from ..core.scope import assess, looks_personal
 from ..core.settings import Settings
 from ..core.target import TargetType, parse_target
+from ..report.footprint import diff_and_save
 from ..report.obsidian import write_note
+from ..report.removal import removal_links
 from ..report.renderer import write_report
 from ..report.scorecard import score_exposure
+from ..report.timeline import build_timeline
 
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8765
@@ -43,6 +46,7 @@ CATS = {
     "IMAGE": ["reverse_image"], "REVERSE": ["reverse_image"],
     "INSTAGRAM": ["instagram"], "TELEGRAM": ["telegram"], "DISCORD": ["discord_id"],
     "PHONE": ["phone_info", "google_dorks"],
+    "CRYPTO": ["crypto_wallet"], "WALLET": ["crypto_wallet"],
     "IP": ["ip_info", "rdap_whois", "bgpview", "shodan_host", "nmap", "naabu", "rustscan"],
     "WEB": ["http_fingerprint", "whatweb", "wafw00f", "httpx", "katana", "nuclei", "nikto",
             "gobuster", "wpscan", "sslscan"],
@@ -166,6 +170,7 @@ def run_investigation(payload: dict) -> dict:
         inv = orch.investigate(target, only=only, depth=depth)
         orch.synthesize(inv)
         paths = write_report(inv, settings.output_dir)
+        footprint = diff_and_save(inv, settings.output_dir)
         if payload.get("obsidian"):
             vault = (payload.get("vault") or "").strip() or settings.obsidian_vault
             if vault:
@@ -182,6 +187,9 @@ def run_investigation(payload: dict) -> dict:
         "summary": inv.summary,
         "graph": _build_graph(inv),
         "exposure": score_exposure(inv),
+        "timeline": build_timeline(inv),
+        "removal": removal_links(inv),
+        "footprint": footprint,
         "report_path": paths.get("markdown"),
         "obsidian_path": obsidian_path,
         "results": [
@@ -210,7 +218,11 @@ def _scan_brief(scan: dict) -> str:
     """Compact text of a scan result for the model's tool_result."""
     if not scan.get("ok"):
         return f"SCAN FAILED: {scan.get('error')}"
-    lines = [f"TARGET: {scan['target']} ({scan['target_type']})", "FINDINGS:"]
+    lines = [f"TARGET: {scan['target']} ({scan['target_type']})"]
+    exp = scan.get("exposure") or {}
+    if exp:
+        lines.append(f"EXPOSURE: grade {exp.get('grade')} ({exp.get('score')}/100)")
+    lines.append("FINDINGS:")
     for m in scan["results"]:
         if m["skipped"] or not m["findings"]:
             continue
@@ -422,8 +434,6 @@ PAGE_HTML = """<!doctype html>
   .pill{margin-left:auto;font-size:11px;color:var(--dim);border:1px solid var(--line);
     border-radius:20px;padding:3px 12px}
   .pill .on{color:var(--grn)} .pill .off{color:var(--red)}
-
-  /* chat = the main event */
   .chat{grid-row:2;grid-column:1;display:flex;flex-direction:column;min-width:0}
   .msgs{flex:1;overflow-y:auto;padding:22px 26px;display:flex;flex-direction:column;gap:16px}
   .m{max-width:760px}
@@ -444,7 +454,6 @@ PAGE_HTML = """<!doctype html>
     font:inherit;font-weight:700;letter-spacing:1px;padding:0 26px;cursor:pointer}
   .inbar .snd:hover{background:#150109} .inbar .snd:disabled{opacity:.4;cursor:not-allowed}
 
-  /* right = live results as Cypher digs */
   .side{grid-row:2;grid-column:2;border-left:1px solid var(--line);overflow-y:auto;
     background:#000000;padding:14px;display:flex;flex-direction:column;gap:12px}
   .direct{display:flex;gap:8px;align-items:center}
@@ -504,6 +513,17 @@ PAGE_HTML = """<!doctype html>
   .vr.v-yes{outline:1px solid var(--grn)} .vr.v-maybe{outline:1px solid var(--pink2)} .vr.v-no{opacity:.3}
   .f{font-size:11.5px;color:#c8b6c4;padding:3px 0;border-top:1px solid #1a0f1d}
   .f:first-child{border-top:0}
+  .dl{font-size:11.5px;padding:2px 0} .dl.add{color:var(--grn)} .dl.rem{color:var(--red);opacity:.75}
+  .tl{display:flex;gap:8px;font-size:11px;padding:3px 0;border-top:1px solid #1a0f1d;align-items:baseline}
+  .tl:first-child{border-top:0}
+  .tl .td{color:var(--pink2);flex:none;min-width:78px;font-variant-numeric:tabular-nums}
+  .tl .tw{color:#d8c6d4;flex:1} .tl .ts{color:var(--faint);font-size:10px}
+  .rl-h{color:var(--pink2);font-size:11px;letter-spacing:1px;margin:8px 0 4px;text-transform:uppercase}
+  .rl-h:first-child{margin-top:0}
+  .rl{font-size:11.5px;color:#c8b6c4;padding:2px 0}
+  .rbtn{background:#0a0510;border:1px solid var(--line2);color:var(--pink2);cursor:pointer;
+    font:inherit;font-size:10px;letter-spacing:1px;padding:2px 8px;border-radius:5px}
+  .rbtn:hover{border-color:var(--pink);color:var(--pink)}
   a{color:var(--pink2);text-decoration:none}
   .loader{display:flex;flex-direction:column;align-items:center;gap:16px;padding:54px 10px}
   .loader .ring{width:46px;height:46px;border:2px solid var(--line2);border-top-color:var(--pink);
@@ -553,6 +573,7 @@ const CATS={ALL:null,
   USERNAME:["username_sites","github_recon","sherlock","maigret","socialscan","telegram","instagram","discord_id","google_dorks"],
   NAME:["google_dorks"],DORKS:["google_dorks"],IMAGE:["reverse_image"],REVERSE:["reverse_image"],
   INSTAGRAM:["instagram"],TELEGRAM:["telegram"],DISCORD:["discord_id"],PHONE:["phone_info","google_dorks"],
+  CRYPTO:["crypto_wallet"],WALLET:["crypto_wallet"],
   IP:["ip_info","rdap_whois","bgpview","shodan_host","nmap","naabu","rustscan"],
   WEB:["http_fingerprint","whatweb","wafw00f","httpx","katana","nuclei","nikto","gobuster","wpscan","sslscan"],
   PORTS:["nmap","naabu","rustscan"],BREACH:["breach_check","h8mail","holehe"]};
@@ -564,7 +585,6 @@ function paint(){$("msgs").innerHTML=HIST.map(m=>
   '<div class="m '+(m.role==="user"?"u":"a")+(m.think?" think":"")+'"><div class="who">'+
   (m.role==="user"?"YOU":"CYPHER")+'</div><div class="bub">'+esc(m.content)+'</div></div>').join("");
   $("msgs").scrollTop=$("msgs").scrollHeight;}
-// smug greeting (no API needed)
 HIST.push({role:"assistant",content:"Cypher. I already know more than you'd like.\\nGive me a handle, email, domain, IP, or number — yours, or one you're cleared to poke at — and I'll pull what the internet's been quietly filing away.\\nWell? I don't have all day. (I do, actually.)"});
 paint();
 
@@ -604,7 +624,6 @@ async function say(){
 $("send").onclick=say;
 $("in").addEventListener("keydown",e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();say();}});
 
-// direct (no-AI) scan
 $("run").onclick=async()=>{
   const body={target:$("target").value,authorized:$("authorized").checked,personal_ok:true,
     no_ai:true,modules:CATS[$("cat").value]};
@@ -648,11 +667,43 @@ function render(d){
     h+='</div></div>';}
   if(d.graph&&d.graph.nodes.length)h+='<div class="pan"><div class="h">ENTITY NETWORK<span class="r">'+d.graph.nodes.length+' / '+d.graph.links.length+'</span></div><canvas id="graph" width="400" height="260"></canvas></div>';
   h+='<div class="pan"><div class="h">BRIEFING<span class="r">'+(d.ai_used?"CLAUDE":"RAW")+'</span></div><div class="b summary">'+esc(d.summary)+'</div></div>';
-  h+='<div class="pan"><div class="h">FINDINGS</div><div class="b">';
+  const fp=d.footprint;
+  if(fp&&!fp.first_scan&&((fp.added||[]).length||(fp.removed||[]).length)){
+    h+='<div class="pan"><div class="h">CHANGES SINCE LAST SCAN<span class="r">'+fp.total+' total</span></div><div class="b">';
+    for(const a of (fp.added||[]))h+='<div class="dl add">+ '+esc(a)+'</div>';
+    for(const r of (fp.removed||[]))h+='<div class="dl rem">− '+esc(r)+'</div>';
+    h+='</div></div>';}
+  if(d.timeline&&d.timeline.length){h+='<div class="pan"><div class="h">TIMELINE<span class="r">'+d.timeline.length+'</span></div><div class="b">';
+    for(const t of d.timeline)h+='<div class="tl"><span class="td">'+esc(t.date)+'</span><span class="tw">'+esc(t.what)+'</span><span class="ts">'+esc(t.source)+'</span></div>';
+    h+='</div></div>';}
+  if(d.removal&&((d.removal.accounts||[]).length||(d.removal.brokers||[]).length)){
+    h+='<div class="pan"><div class="h">REMOVE ME<span class="r">opt-out</span></div><div class="b">';
+    if((d.removal.accounts||[]).length){h+='<div class="rl-h">Accounts found — deactivate:</div>';
+      for(const a of d.removal.accounts)h+='<div class="rl"><b>'+esc(a.platform)+'</b> '+linkify(a.url)+'</div>';}
+    h+='<div class="rl-h">Data brokers — opt out:</div>';
+    for(const b of d.removal.brokers)h+='<div class="rl"><b>'+esc(b.name)+'</b> <a href="'+esc(b.url)+'" target="_blank" rel="noreferrer">'+esc(b.url)+'</a></div>';
+    h+='</div></div>';}
+  h+='<div class="pan"><div class="h">FINDINGS<button id="dlrep" class="r rbtn">⇩ REPORT</button></div><div class="b">';
   for(const m of d.results)for(const f of (m.findings||[]))if(!m.skipped)h+='<div class="f"><b>'+esc(m.module)+'</b> · '+esc(f.title)+': '+esc(f.detail)+'</div>';
   h+='</div></div>';
   $("out").innerHTML=h;
+  window.LAST=d;
+  const db=$("dlrep");if(db)db.onclick=()=>downloadReport(d);
   if(d.graph&&d.graph.nodes.length)drawGraph(d.graph);
+}
+function linkify(s){const m=String(s).match(/https?:\\/\\/\\S+/);return m?'<a href="'+esc(m[0])+'" target="_blank" rel="noreferrer">'+esc(m[0])+'</a> '+esc(s.replace(m[0],'')):esc(s);}
+function downloadReport(d){
+  let b='<h1>CYPHER report — '+esc(d.target)+'</h1><p class="mt">'+esc(d.target_type)+' · '+(d.ai_used?'Claude':'raw')+'</p>';
+  if(d.exposure)b+='<h2>Exposure</h2><p>Grade <b>'+d.exposure.grade+'</b> · '+d.exposure.score+'/100</p><p>'+(d.exposure.factors||[]).map(esc).join(' · ')+'</p>';
+  b+='<h2>Briefing</h2><pre>'+esc(d.summary)+'</pre>';
+  if(d.timeline&&d.timeline.length){b+='<h2>Timeline</h2><ul>';for(const t of d.timeline)b+='<li>'+esc(t.date)+' — '+esc(t.what)+' ('+esc(t.source)+')</li>';b+='</ul>';}
+  b+='<h2>Findings</h2><ul>';
+  for(const m of d.results)for(const f of (m.findings||[]))if(!m.skipped)b+='<li><b>'+esc(m.module)+'</b> · '+esc(f.title)+': '+esc(f.detail)+'</li>';
+  b+='</ul>';
+  if(d.removal){b+='<h2>Remove me</h2><ul>';for(const a of (d.removal.accounts||[]))b+='<li>'+esc(a.platform)+': '+esc(a.url)+'</li>';for(const x of (d.removal.brokers||[]))b+='<li>'+esc(x.name)+': '+esc(x.url)+'</li>';b+='</ul>';}
+  const doc='<!doctype html><meta charset="utf-8"><title>CYPHER '+esc(d.target)+'</title><style>body{background:#0a0510;color:#f4eef2;font:14px/1.6 system-ui,sans-serif;max-width:820px;margin:40px auto;padding:0 20px}h1,h2{color:#ff5db1;border-bottom:1px solid #7a2f53;padding-bottom:6px}a{color:#ff9ed6}pre{white-space:pre-wrap;background:#050505;border:1px solid #7a2f53;padding:12px;border-radius:8px}.mt{color:#b89aab}li{margin:3px 0}</style>'+b;
+  const blob=new Blob([doc],{type:"text/html"}),u=URL.createObjectURL(blob),a=document.createElement("a");
+  a.href=u;a.download="cypher-"+d.target.replace(/[^a-z0-9]+/gi,"_")+".html";a.click();URL.revokeObjectURL(u);
 }
 $("out").addEventListener("click",e=>{const c=e.target.closest(".vr");if(!c)return;
   const cl=e.target.classList;
@@ -662,7 +713,7 @@ $("out").addEventListener("click",e=>{const c=e.target.closest(".vr");if(!c)retu
 
 let _raf=null;
 function drawGraph(g){const cv=$("graph");if(!cv)return;const ctx=cv.getContext("2d"),W=cv.width,H=cv.height;
-  const col={domain:"#7bb8ff",ip:"#5ef2a8",email:"#ffb454",url:"#ff9ed6",username:"#c79bff",phone:"#5ef2a8",module:"#75566b"};
+  const col={domain:"#7bb8ff",ip:"#5ef2a8",email:"#ffb454",url:"#ff9ed6",username:"#c79bff",phone:"#5ef2a8",crypto:"#ffd36b",name:"#c79bff",image:"#ff9ed6",module:"#75566b"};
   const root=g.nodes[0].id;
   const N=g.nodes.map(n=>({...n,x:W/2+(Math.random()-.5)*160,y:H/2+(Math.random()-.5)*160,vx:0,vy:0}));
   const ix={};N.forEach((n,i)=>ix[n.id]=i);const L=g.links.filter(l=>l.source in ix&&l.target in ix);

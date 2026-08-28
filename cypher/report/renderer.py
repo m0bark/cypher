@@ -48,7 +48,7 @@ def to_markdown(inv: Investigation) -> str:
 
 def _result_dict(res: ModuleResult) -> dict:
     d = asdict(res)
-    d.pop("raw", None)  # keep JSON light; raw can be large/unserializable
+    d.pop("raw", None)
     return d
 
 

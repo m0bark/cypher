@@ -17,7 +17,6 @@ def _is_snowflake(value: str) -> bool:
     return value.isdigit() and 17 <= len(value) <= 20
 
 
-# public_flags bitfield -> badge name
 BADGES = {
     1 << 0: "Discord Staff", 1 << 1: "Partner", 1 << 2: "HypeSquad Events",
     1 << 3: "Bug Hunter (lvl 1)", 1 << 6: "HypeSquad Bravery",

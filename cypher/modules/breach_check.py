@@ -52,14 +52,19 @@ class BreachCheck(BaseModule):
 
         breaches = resp.json()
         names = [b.get("Name", "?") for b in breaches]
+        dated = sorted(
+            ((b.get("Name", "?"), b.get("BreachDate", "?"), b.get("PwnCount", 0)) for b in breaches),
+            key=lambda x: x[1], reverse=True,
+        )
+        detail = "; ".join(f"{n} ({d})" for n, d, _ in dated)
         findings = [
-            Finding(
-                f"Found in {len(breaches)} breaches",
-                ", ".join(names),
-                Severity.HIGH,
-                {"breaches": names},
-            )
+            Finding(f"Found in {len(breaches)} breaches", detail, Severity.HIGH,
+                    {"breaches": names})
         ]
+        classes = sorted({c for b in breaches for c in b.get("DataClasses", [])})
+        if classes:
+            findings.append(Finding("Data exposed", ", ".join(classes), Severity.HIGH,
+                                    {"classes": classes}))
         return ModuleResult(
             self.name, target.value, ok=True, findings=findings, raw=breaches
         )

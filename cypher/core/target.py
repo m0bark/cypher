@@ -22,11 +22,14 @@ class TargetType(str, Enum):
     PHONE = "phone"
     NAME = "name"
     IMAGE = "image"
+    CRYPTO = "crypto"
     ORG = "org"
     UNKNOWN = "unknown"
 
 
 _IMAGE_EXT = (".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".avif")
+_ETH_RE = re.compile(r"^0x[a-fA-F0-9]{40}$")
+_BTC_RE = re.compile(r"^(bc1[a-z0-9]{11,71}|[13][a-km-zA-HJ-NP-Z1-9]{25,34})$")
 
 
 _DOMAIN_RE = re.compile(
@@ -36,7 +39,6 @@ _DOMAIN_RE = re.compile(
 _EMAIL_RE = re.compile(r"^[^@\s]+@([^@\s]+\.[^@\s]+)$")
 _URL_RE = re.compile(r"^https?://", re.IGNORECASE)
 _USERNAME_RE = re.compile(r"^@?[A-Za-z0-9_][A-Za-z0-9_.-]{1,38}$")
-# Phone: optional +, then 7-15 digits, allowing spaces/dashes/dots/parens as separators.
 _PHONE_RE = re.compile(r"^\+?[0-9][0-9\s().\-]{6,20}$")
 
 
@@ -73,14 +75,14 @@ def detect_type(raw: str) -> TargetType:
         return TargetType.IP
     except ValueError:
         pass
-    # Phone before domain/username: mostly-digits with an optional leading +.
+    if _ETH_RE.match(s) or _BTC_RE.match(s):
+        return TargetType.CRYPTO
     if _PHONE_RE.match(s) and 7 <= len(_phone_digits(s)) <= 15:
         return TargetType.PHONE
     if "." in s and _DOMAIN_RE.match(s):
         return TargetType.DOMAIN
     if _USERNAME_RE.match(s):
         return TargetType.USERNAME
-    # Free text (a real name, a phrase) — anything printable with a space.
     if " " in s or '"' in s:
         return TargetType.NAME
     return TargetType.UNKNOWN
@@ -123,5 +125,8 @@ def parse_target(raw: str) -> Target:
     if ttype is TargetType.IMAGE:
         host = urlparse(s).netloc.split("@")[-1].split(":")[0].lower()
         return Target(raw=s, type=TargetType.IMAGE, value=s, parent=host or None)
+
+    if ttype is TargetType.CRYPTO:
+        return Target(raw=s, type=TargetType.CRYPTO, value=s)
 
     return Target(raw=s, type=TargetType.UNKNOWN, value=s)

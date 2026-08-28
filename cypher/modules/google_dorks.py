@@ -35,7 +35,6 @@ def _dorks_for(target: Target) -> list[tuple[str, str]]:
         ]
         return dorks
 
-    # username / email / name / org / phone
     dorks.append(("Exact match", q))
     for site in SOCIAL:
         dorks.append((f"On {site}", f"{q} site:{site}"))

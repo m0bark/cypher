@@ -21,7 +21,7 @@ class HttpClient:
 
     def _client_or_create(self) -> Any:
         if self._client is None:
-            import httpx  # lazy
+            import httpx
 
             self._client = httpx.Client(
                 follow_redirects=True,

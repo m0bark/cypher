@@ -23,11 +23,10 @@ from ..core.context import Context
 from ..core.module import BaseModule, Finding, ModuleResult, Severity
 from ..core.target import Target, TargetType
 
-EXTERNAL_TOOL_TIMEOUT = 300  # seconds; hard cap per tool
+EXTERNAL_TOOL_TIMEOUT = 300
 MAX_PREVIEW_LINES = 25
 DIRB_WORDLIST = "/usr/share/wordlists/dirb/common.txt"
 _ANSI_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
-# Lines that are tool self-promotion / credits, not findings about the target.
 _NOISE_MARKERS = ("donation", "megadose", "@palenath", "1FHDM49", "twitter :", "github :")
 
 
@@ -45,10 +44,10 @@ class ToolSpec:
     build_args: Callable[[str], list[str]]
     contacts_target: bool = False
     install_hint: str = ""
-    verify_hits: bool = False  # control-check each URL hit to kill soft-404 lies
+    verify_hits: bool = False
 
 
-CONTROL_HANDLE = "zqx9no7user000zz"  # a handle that should not exist anywhere
+CONTROL_HANDLE = "zqx9no7user000zz"
 
 
 D = (TargetType.DOMAIN,)
@@ -60,7 +59,6 @@ EMAIL = (TargetType.EMAIL,)
 USER = (TargetType.USERNAME,)
 
 SPECS: list[ToolSpec] = [
-    # ---- subdomain / domain recon (passive) --------------------------------
     ToolSpec("theharvester", "theHarvester",
              "Harvest emails, subdomains and hosts for a domain from public "
              "sources (search engines, crt.sh) via theHarvester.",
@@ -115,7 +113,6 @@ SPECS: list[ToolSpec] = [
              DI, lambda t: [t],
              install_hint="apt install whois"),
 
-    # ---- web / http (active: contacts the target) --------------------------
     ToolSpec("whatweb", "whatweb",
              "Fingerprint web technologies, CMS, servers and plugins (WhatWeb).",
              DU, lambda t: ["--color=never", _url(t)], contacts_target=True,
@@ -154,7 +151,6 @@ SPECS: list[ToolSpec] = [
              DI, lambda t: [t], contacts_target=True,
              install_hint="apt install sslscan"),
 
-    # ---- ports / network (active) ------------------------------------------
     ToolSpec("nmap", "nmap",
              "Fast TCP port/service scan of a host (top ports). ACTIVE.",
              DI, lambda t: ["-T4", "-F", "-Pn", t], contacts_target=True,
@@ -168,7 +164,6 @@ SPECS: list[ToolSpec] = [
              DI, lambda t: ["-a", t, "-g", "--no-banner"], contacts_target=True,
              install_hint="apt install rustscan  (or cargo install rustscan)"),
 
-    # ---- email intelligence ------------------------------------------------
     ToolSpec("holehe", "holehe",
              "Find which services have an account for an email (holehe).",
              EMAIL, lambda e: ["--only-used", e],
@@ -186,7 +181,6 @@ SPECS: list[ToolSpec] = [
              (TargetType.EMAIL, TargetType.USERNAME), lambda t: [t],
              install_hint="pipx install socialscan"),
 
-    # ---- username / people -------------------------------------------------
     ToolSpec("sherlock", "sherlock",
              "Hunt a username across ~400 social networks (sherlock). Each hit is "
              "control-verified to strip its soft-404 false positives.",
@@ -213,17 +207,17 @@ def _verify_hit(url: str, uname: str, ctx: Context) -> bool:
     garbage control handle 404s. Kills soft-404 platforms that 200 for anything."""
     ctrl = url.replace(uname, CONTROL_HANDLE, 1)
     if ctrl == url:
-        return True  # username not in the URL — can't control-check, keep it
+        return True
     try:
         r1 = ctx.http.get(url, timeout=8)
         r2 = ctx.http.get(ctrl, timeout=8)
     except Exception:
-        return True  # network hiccup — don't drop on uncertainty
+        return True
     if r1.status_code >= 400:
         return False
     if r2.status_code >= 400:
-        return True  # real 200, control 404 -> genuine
-    return abs(len(r1.text or "") - len(r2.text or "")) > 600  # both 200: trust big diff
+        return True
+    return abs(len(r1.text or "") - len(r2.text or "")) > 600
 
 
 class ExternalToolModule(BaseModule):
@@ -242,8 +236,6 @@ class ExternalToolModule(BaseModule):
 
         argv = [binary_path, *self.spec.build_args(target.value)]
         try:
-            # Run in a throwaway working dir: some tools (sherlock, etc.) drop
-            # output files in cwd — keep them out of the project/repo.
             with tempfile.TemporaryDirectory(prefix="cypher-tool-") as workdir:
                 proc = subprocess.run(
                     argv,
@@ -282,19 +274,14 @@ class ExternalToolModule(BaseModule):
             if ln.strip() and not any(m in ln.lower() for m in _NOISE_MARKERS)
         ]
 
-        # Prefer explicit "[+]" hit markers (holehe/sherlock); drop legend lines that
-        # also carry the "[-]"/"[x]" markers. Else fall back to URL-bearing lines.
         plus = [
             ln for ln in lines
             if ln.startswith("[+]") and "[-]" not in ln and "[x]" not in ln
         ]
         hits = plus if plus else [ln for ln in lines if "http" in ln.lower()]
-        # Drop homepage/no-target URLs (e.g. sherlock's "[+] Discord: https://discord.com"):
-        # a URL hit that doesn't even contain the target value is a false positive.
         tv = target.value.lower()
         hits = [ln for ln in hits if "http" not in ln.lower() or tv in ln.lower()]
 
-        # Control-verify each hit URL for tools that lie (sherlock/maigret soft-404s).
         dropped = 0
         if self.spec and self.spec.verify_hits and hits:
             kept = []
@@ -353,6 +340,5 @@ def _make_module(spec: ToolSpec) -> type[ExternalToolModule]:
     )
 
 
-# Generate one discoverable module class per spec.
 for _spec in SPECS:
     globals()[f"ExternalTool_{_spec.name}"] = _make_module(_spec)

@@ -63,7 +63,7 @@ def cmd_scan(args: argparse.Namespace) -> int:
     if args.passive:
         settings.passive_only = True
     if args.no_ai:
-        settings.anthropic_api_key = settings.anthropic_api_key  # unchanged; use_ai=False below
+        settings.anthropic_api_key = settings.anthropic_api_key
     if args.out:
         settings.output_dir = args.out
 
@@ -72,7 +72,6 @@ def cmd_scan(args: argparse.Namespace) -> int:
         _echo(f"error: could not classify target '{args.target}'.", )
         return 2
 
-    # -- authorization gate ------------------------------------------------
     decision = assess(target)
     if not decision.allowed:
         _echo(f"Refusing: {decision.reason}")

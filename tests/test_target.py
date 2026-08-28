@@ -37,7 +37,6 @@ def test_empty_is_unknown():
 
 
 def test_domain_precedes_username_when_dotted():
-    # A dotted token is a domain, not a username.
     assert detect_type("foo.bar") is TargetType.DOMAIN
 
 
@@ -53,7 +52,6 @@ def test_detects_bare_digit_phone():
 
 
 def test_short_digits_not_phone():
-    # Too short to be a phone number.
     assert detect_type("12345") is not TargetType.PHONE
 
 
@@ -67,5 +65,4 @@ def test_detects_freetext_name():
 def test_detects_image_url():
     assert detect_type("https://example.com/pfp.jpg") is TargetType.IMAGE
     assert detect_type("https://cdn.x.com/a/b.png?size=256") is TargetType.IMAGE
-    # a non-image URL stays a URL
     assert detect_type("https://example.com/page") is TargetType.URL
