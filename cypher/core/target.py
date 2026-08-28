@@ -20,6 +20,7 @@ class TargetType(str, Enum):
     URL = "url"
     USERNAME = "username"
     PHONE = "phone"
+    NAME = "name"
     ORG = "org"
     UNKNOWN = "unknown"
 
@@ -74,6 +75,9 @@ def detect_type(raw: str) -> TargetType:
         return TargetType.DOMAIN
     if _USERNAME_RE.match(s):
         return TargetType.USERNAME
+    # Free text (a real name, a phrase) — anything printable with a space.
+    if " " in s or '"' in s:
+        return TargetType.NAME
     return TargetType.UNKNOWN
 
 
@@ -107,5 +111,8 @@ def parse_target(raw: str) -> Target:
         return Target(
             raw=s, type=TargetType.USERNAME, value=s.lstrip("@").lower()
         )
+
+    if ttype is TargetType.NAME:
+        return Target(raw=s, type=TargetType.NAME, value=s.strip('"').strip())
 
     return Target(raw=s, type=TargetType.UNKNOWN, value=s)

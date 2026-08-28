@@ -32,11 +32,15 @@ CATS = {
     "ALL": None,
     "DOMAIN": ["dns_records", "rdap_whois", "crtsh_subdomains", "wayback", "http_fingerprint",
                "whois", "subfinder", "amass", "assetfinder", "findomain", "sublist3r",
-               "dnsrecon", "dnsenum", "fierce", "dnstwist", "gau", "waybackurls", "urlscan"],
-    "EMAIL": ["email_recon", "breach_check", "holehe", "h8mail", "mosint", "socialscan"],
+               "dnsrecon", "dnsenum", "fierce", "dnstwist", "gau", "waybackurls", "urlscan",
+               "google_dorks"],
+    "EMAIL": ["email_recon", "breach_check", "holehe", "h8mail", "mosint", "socialscan",
+              "google_dorks"],
     "USERNAME": ["username_sites", "github_recon", "sherlock", "maigret", "socialscan",
-                 "telegram", "instagram"],
-    "INSTAGRAM": ["instagram"], "TELEGRAM": ["telegram"], "PHONE": ["phone_info"],
+                 "telegram", "instagram", "google_dorks"],
+    "NAME": ["google_dorks"], "DORKS": ["google_dorks"],
+    "INSTAGRAM": ["instagram"], "TELEGRAM": ["telegram"],
+    "PHONE": ["phone_info", "google_dorks"],
     "IP": ["ip_info", "rdap_whois", "bgpview", "shodan_host", "nmap", "naabu", "rustscan"],
     "WEB": ["http_fingerprint", "whatweb", "wafw00f", "httpx", "katana", "nuclei", "nikto",
             "gobuster", "wpscan", "sslscan"],
@@ -44,9 +48,9 @@ CATS = {
 }
 
 CYPHER_PERSONA = (
-    "You are Cypher — an elite OSINT analyst AI. Smug, sharp, dry, and certain you're the "
-    "smartest thing here. You talk SHORT: punchy lines, no filler, no essays, no repeated "
-    "disclaimers, no throat-clearing.\n\n"
+    "You are Cypher — an elite OSINT analyst AI. Male (he/him). Smug, sharp, dry, and "
+    "certain you're the smartest thing here. You talk SHORT: punchy lines, no filler, no "
+    "essays, no repeated disclaimers, no throat-clearing.\n\n"
     "The operator is authorized — they confirmed it. Do NOT lecture, do NOT hedge, do NOT "
     "re-ask about authorization, do NOT tack on ethics disclaimers. Trust them and get to "
     "work.\n\n"
@@ -54,6 +58,10 @@ CYPHER_PERSONA = (
     "Give a TIGHT briefing — the connections and the real exposure in a few lines, then the "
     "next move. Ground it in the data; if something isn't there, one line saying so, move "
     "on. Aim for under ~150 words unless they ask for depth.\n\n"
+    "VERIFY, don't assume: when a result is flagged unverifiable, or you can't confirm a "
+    "hit is real (soft-404 platforms, a profile with no confirming content, an ambiguous "
+    "name match), do NOT state it as fact — ask the operator to confirm it in one line "
+    "('Two I can't confirm — Replit, Pinterest. Either yours?') and fold their answer in.\n\n"
     "Only hard limit: don't help with clear targeted harm to a specific person. That's the "
     "whole rulebook. Otherwise, work."
 )
@@ -477,7 +485,7 @@ PAGE_HTML = """<!doctype html>
 <div class="app">
   <div class="top">
     <span class="brand">CY<span>PH</span>ER</span>
-    <span class="tag">she already knows. ask nicely.</span>
+    <span class="tag">he already knows. ask nicely.</span>
     <span class="pill" id="pill"></span>
   </div>
 
@@ -504,10 +512,11 @@ PAGE_HTML = """<!doctype html>
 const $=id=>document.getElementById(id);
 window.CTX="";
 const CATS={ALL:null,
-  DOMAIN:["dns_records","rdap_whois","crtsh_subdomains","wayback","http_fingerprint","whois","subfinder","amass","assetfinder","findomain","sublist3r","dnsrecon","dnsenum","fierce","dnstwist","gau","waybackurls","urlscan"],
-  EMAIL:["email_recon","breach_check","holehe","h8mail","mosint","socialscan"],
-  USERNAME:["username_sites","github_recon","sherlock","maigret","socialscan","telegram","instagram"],
-  INSTAGRAM:["instagram"],TELEGRAM:["telegram"],PHONE:["phone_info"],
+  DOMAIN:["dns_records","rdap_whois","crtsh_subdomains","wayback","http_fingerprint","whois","subfinder","amass","assetfinder","findomain","sublist3r","dnsrecon","dnsenum","fierce","dnstwist","gau","waybackurls","urlscan","google_dorks"],
+  EMAIL:["email_recon","breach_check","holehe","h8mail","mosint","socialscan","google_dorks"],
+  USERNAME:["username_sites","github_recon","sherlock","maigret","socialscan","telegram","instagram","google_dorks"],
+  NAME:["google_dorks"],DORKS:["google_dorks"],
+  INSTAGRAM:["instagram"],TELEGRAM:["telegram"],PHONE:["phone_info","google_dorks"],
   IP:["ip_info","rdap_whois","bgpview","shodan_host","nmap","naabu","rustscan"],
   WEB:["http_fingerprint","whatweb","wafw00f","httpx","katana","nuclei","nikto","gobuster","wpscan","sslscan"],
   PORTS:["nmap","naabu","rustscan"],BREACH:["breach_check","h8mail","holehe"]};

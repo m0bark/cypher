@@ -55,3 +55,10 @@ def test_detects_bare_digit_phone():
 def test_short_digits_not_phone():
     # Too short to be a phone number.
     assert detect_type("12345") is not TargetType.PHONE
+
+
+def test_detects_freetext_name():
+    assert detect_type("John Smith") is TargetType.NAME
+    t = parse_target('"Jane Doe"')
+    assert t.type is TargetType.NAME
+    assert t.value == "Jane Doe"
