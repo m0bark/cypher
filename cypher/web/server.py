@@ -23,6 +23,7 @@ from ..core.settings import Settings
 from ..core.target import TargetType, parse_target
 from ..report.obsidian import write_note
 from ..report.renderer import write_report
+from ..report.scorecard import score_exposure
 
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8765
@@ -180,6 +181,7 @@ def run_investigation(payload: dict) -> dict:
         "plan": inv.plan,
         "summary": inv.summary,
         "graph": _build_graph(inv),
+        "exposure": score_exposure(inv),
         "report_path": paths.get("markdown"),
         "obsidian_path": obsidian_path,
         "results": [
@@ -280,7 +282,7 @@ def _chat_cli(history: list, context: str) -> dict:
         category = "ALL"
     scan = run_investigation({
         "target": target, "authorized": True, "personal_ok": True, "no_ai": True,
-        "modules": CATS.get(category),
+        "modules": CATS.get(category), "depth": 2,
     })
     brief_prompt = (
         CYPHER_PERSONA
@@ -320,6 +322,7 @@ def _chat_api(settings, history: list) -> dict:
                     scan = run_investigation({
                         "target": inp.get("target", ""), "authorized": True, "personal_ok": True,
                         "no_ai": True, "modules": CATS.get(inp.get("category", "ALL")),
+                        "depth": 2,
                     })
                     last_scan = scan
                     tool_results.append({"type": "tool_result", "tool_use_id": block.id,
@@ -482,6 +485,17 @@ PAGE_HTML = """<!doctype html>
   .vr .vm p{margin:2px 0;color:var(--dim);font-size:11px}
   .ris{display:block;font-size:10px;color:var(--faint);margin-top:2px}
   .ris a{color:var(--pink2)}
+  .score{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+  .grade{font-size:32px;font-weight:700;width:54px;height:54px;display:flex;align-items:center;
+    justify-content:center;border:2px solid var(--pink);border-radius:12px;color:var(--pink)}
+  .g-A,.g-B{color:var(--grn);border-color:var(--grn)}.g-C{color:var(--pink2);border-color:var(--pink2)}
+  .g-D,.g-F{color:var(--red);border-color:var(--red)}
+  .sc{font-size:15px;color:var(--dim)}
+  .bar{flex:1;min-width:120px;height:8px;background:#1a0710;border-radius:5px;overflow:hidden}
+  .bar span{display:block;height:100%;background:var(--pink)}
+  .fac{margin-top:10px;font-size:11px;color:var(--dim)}
+  .recs{margin:8px 0 0;padding-left:18px;font-size:12px;color:#e6d2e0}
+  .recs li{margin:3px 0}
   .vb{display:flex;gap:4px;flex:none}
   .vb button{background:#000;border:1px solid var(--line2);color:var(--dim);font:inherit;font-size:10px;padding:3px 8px;border-radius:5px;cursor:pointer}
   .vb .vy:hover{border-color:var(--grn);color:var(--grn)}
@@ -619,6 +633,13 @@ function verifyItems(d){const items=[],seen=new Set();
 function render(d){
   window.CTX="TARGET: "+d.target+"\\n"+d.results.flatMap(m=>(m.findings||[]).map(f=>"["+m.module+"] "+f.title+": "+f.detail)).join("\\n");
   let h="";
+  if(d.exposure){const e=d.exposure;
+    h+='<div class="pan"><div class="h">EXPOSURE<span class="r">grade '+e.grade+'</span></div><div class="b">'+
+      '<div class="score"><div class="grade g-'+e.grade+'">'+e.grade+'</div><div class="sc">'+e.score+'/100</div>'+
+      '<div class="bar"><span style="width:'+e.score+'%"></span></div></div>'+
+      ((e.factors||[]).length?'<div class="fac">'+e.factors.map(esc).join(' · ')+'</div>':'')+
+      ((e.recommendations||[]).length?'<ul class="recs">'+e.recommendations.map(r=>'<li>'+esc(r)+'</li>').join('')+'</ul>':'')+
+      '</div></div>';}
   const V=verifyItems(d);
   if(V.length){h+='<div class="pan"><div class="h">VERIFY — is it him?<span class="r">'+V.length+' links</span></div><div class="b">';
     for(const v of V)h+='<div class="vr">'+(v.image?'<img src="'+esc(v.image)+'" referrerpolicy="no-referrer" onerror="this.remove()">':'')+

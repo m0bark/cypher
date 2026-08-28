@@ -45,6 +45,10 @@ class ToolSpec:
     build_args: Callable[[str], list[str]]
     contacts_target: bool = False
     install_hint: str = ""
+    verify_hits: bool = False  # control-check each URL hit to kill soft-404 lies
+
+
+CONTROL_HANDLE = "zqx9no7user000zz"  # a handle that should not exist anywhere
 
 
 D = (TargetType.DOMAIN,)
@@ -184,14 +188,42 @@ SPECS: list[ToolSpec] = [
 
     # ---- username / people -------------------------------------------------
     ToolSpec("sherlock", "sherlock",
-             "Hunt a username across ~400 social networks (sherlock).",
+             "Hunt a username across ~400 social networks (sherlock). Each hit is "
+             "control-verified to strip its soft-404 false positives.",
              USER, lambda u: ["--print-found", "--timeout", "10", u],
-             install_hint="pipx install sherlock-project"),
+             install_hint="pipx install sherlock-project", verify_hits=True),
     ToolSpec("maigret", "maigret",
-             "Deep username search across 2500+ sites with profile parsing (maigret).",
+             "Deep username search across 2500+ sites (maigret), with each hit "
+             "control-verified to strip false positives.",
              USER, lambda u: [u, "--timeout", "10", "--no-color"],
-             install_hint="pipx install maigret"),
+             install_hint="pipx install maigret", verify_hits=True),
 ]
+
+
+_HIT_URL_RE = re.compile(r"https?://[^\s)\]]+")
+
+
+def _hit_url(line: str) -> str | None:
+    m = _HIT_URL_RE.search(line)
+    return m.group(0).rstrip(".,") if m else None
+
+
+def _verify_hit(url: str, uname: str, ctx: Context) -> bool:
+    """True if the profile plausibly exists: the handle resolves where a known
+    garbage control handle 404s. Kills soft-404 platforms that 200 for anything."""
+    ctrl = url.replace(uname, CONTROL_HANDLE, 1)
+    if ctrl == url:
+        return True  # username not in the URL — can't control-check, keep it
+    try:
+        r1 = ctx.http.get(url, timeout=8)
+        r2 = ctx.http.get(ctrl, timeout=8)
+    except Exception:
+        return True  # network hiccup — don't drop on uncertainty
+    if r1.status_code >= 400:
+        return False
+    if r2.status_code >= 400:
+        return True  # real 200, control 404 -> genuine
+    return abs(len(r1.text or "") - len(r2.text or "")) > 600  # both 200: trust big diff
 
 
 class ExternalToolModule(BaseModule):
@@ -239,9 +271,9 @@ class ExternalToolModule(BaseModule):
                 f"{self.spec.binary} exited {proc.returncode}: {err or 'no output'}",
             )
 
-        return self._parse(target, output, proc.returncode)
+        return self._parse(target, output, proc.returncode, ctx)
 
-    def _parse(self, target: Target, output: str, returncode: int) -> ModuleResult:
+    def _parse(self, target: Target, output: str, returncode: int, ctx: Context) -> ModuleResult:
         assert self.spec is not None
         output = _ANSI_RE.sub("", output)
         lines = [
@@ -262,18 +294,34 @@ class ExternalToolModule(BaseModule):
         tv = target.value.lower()
         hits = [ln for ln in hits if "http" not in ln.lower() or tv in ln.lower()]
 
+        # Control-verify each hit URL for tools that lie (sherlock/maigret soft-404s).
+        dropped = 0
+        if self.spec and self.spec.verify_hits and hits:
+            kept = []
+            for ln in hits[:30]:
+                u = _hit_url(ln)
+                if u and not _verify_hit(u, tv, ctx):
+                    dropped += 1
+                else:
+                    kept.append(ln)
+            hits = kept
+
         if hits:
             detail = "; ".join(hits[:40])
             if len(hits) > 40:
                 detail += f" ... (+{len(hits) - 40} more)"
+            title = f"{self.spec.binary}: {len(hits)} hits"
+            if self.spec.verify_hits:
+                title += " (control-verified)"
             findings = [
-                Finding(
-                    f"{self.spec.binary}: {len(hits)} hits",
-                    detail,
-                    Severity.LOW,
-                    {"hits": hits[:60], "returncode": returncode},
-                )
+                Finding(title, detail, Severity.LOW,
+                        {"hits": hits[:60], "returncode": returncode})
             ]
+            if dropped:
+                findings.append(Finding(
+                    f"{dropped} false positives filtered",
+                    "control-check dropped soft-404 platforms that return 200 for any handle.",
+                    Severity.INFO))
         else:
             preview = "\n".join(lines[:MAX_PREVIEW_LINES])
             if len(lines) > MAX_PREVIEW_LINES:
