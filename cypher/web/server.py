@@ -562,9 +562,19 @@ function showLoader(){
 }
 function hideLoader(){if(_ldi){clearInterval(_ldi);_ldi=null;}if(document.querySelector(".loader"))$("out").innerHTML="";}
 
+function showImagePanel(url){
+  $("out").innerHTML='<div class="pan"><div class="h">REVERSE IMAGE SEARCH</div><div class="b">'+
+    '<div class="vr"><img src="'+esc(url)+'" referrerpolicy="no-referrer" onerror="this.remove()">'+
+    '<div class="vm"><span class="plat">image</span><a href="'+esc(url)+'" target="_blank" rel="noreferrer">'+esc(url)+'</a>'+ris(url)+'</div></div>'+
+    '<p style="color:var(--faint);font-size:11px;margin-top:8px">Finds where this image appears online — catfish, impersonation, reuse. Not facial recognition.</p></div></div>';
+}
 async function say(){
   const t=$("in").value.trim();if(!t)return;$("in").value="";
   HIST.push({role:"user",content:t});
+  if(/^https?:\/\/\S+\.(jpe?g|png|gif|webp|bmp)(\?\S*)?$/i.test(t)){
+    HIST.push({role:"assistant",content:"Reverse-image links are in the panel — Google, Yandex, TinEye. That'll show you everywhere this exact image is reused. (I check where the image appears, not whose face it is.)"});
+    paint();showImagePanel(t);return;
+  }
   HIST.push({role:"assistant",content:"digging…",think:true});paint();
   $("send").disabled=true;showLoader();
   try{
