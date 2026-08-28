@@ -21,8 +21,12 @@ class TargetType(str, Enum):
     USERNAME = "username"
     PHONE = "phone"
     NAME = "name"
+    IMAGE = "image"
     ORG = "org"
     UNKNOWN = "unknown"
+
+
+_IMAGE_EXT = (".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".avif")
 
 
 _DOMAIN_RE = re.compile(
@@ -60,7 +64,8 @@ def detect_type(raw: str) -> TargetType:
     if not s:
         return TargetType.UNKNOWN
     if _URL_RE.match(s):
-        return TargetType.URL
+        path = s.split("?")[0].split("#")[0].lower()
+        return TargetType.IMAGE if path.endswith(_IMAGE_EXT) else TargetType.URL
     if _EMAIL_RE.match(s):
         return TargetType.EMAIL
     try:
@@ -114,5 +119,9 @@ def parse_target(raw: str) -> Target:
 
     if ttype is TargetType.NAME:
         return Target(raw=s, type=TargetType.NAME, value=s.strip('"').strip())
+
+    if ttype is TargetType.IMAGE:
+        host = urlparse(s).netloc.split("@")[-1].split(":")[0].lower()
+        return Target(raw=s, type=TargetType.IMAGE, value=s, parent=host or None)
 
     return Target(raw=s, type=TargetType.UNKNOWN, value=s)

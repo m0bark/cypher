@@ -62,3 +62,10 @@ def test_detects_freetext_name():
     t = parse_target('"Jane Doe"')
     assert t.type is TargetType.NAME
     assert t.value == "Jane Doe"
+
+
+def test_detects_image_url():
+    assert detect_type("https://example.com/pfp.jpg") is TargetType.IMAGE
+    assert detect_type("https://cdn.x.com/a/b.png?size=256") is TargetType.IMAGE
+    # a non-image URL stays a URL
+    assert detect_type("https://example.com/page") is TargetType.URL
