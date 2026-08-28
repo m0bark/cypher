@@ -571,7 +571,7 @@ function showImagePanel(url){
 async function say(){
   const t=$("in").value.trim();if(!t)return;$("in").value="";
   HIST.push({role:"user",content:t});
-  if(/^https?:\/\/\S+\.(jpe?g|png|gif|webp|bmp)(\?\S*)?$/i.test(t)){
+  if(/^https?:\\/\\/\\S+\\.(jpe?g|png|gif|webp|bmp)(\\?\\S*)?$/i.test(t)){
     HIST.push({role:"assistant",content:"Reverse-image links are in the panel — Google, Yandex, TinEye. That'll show you everywhere this exact image is reused. (I check where the image appears, not whose face it is.)"});
     paint();showImagePanel(t);return;
   }
