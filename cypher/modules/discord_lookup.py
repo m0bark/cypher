@@ -17,6 +17,18 @@ def _is_snowflake(value: str) -> bool:
     return value.isdigit() and 17 <= len(value) <= 20
 
 
+# public_flags bitfield -> badge name
+BADGES = {
+    1 << 0: "Discord Staff", 1 << 1: "Partner", 1 << 2: "HypeSquad Events",
+    1 << 3: "Bug Hunter (lvl 1)", 1 << 6: "HypeSquad Bravery",
+    1 << 7: "HypeSquad Brilliance", 1 << 8: "HypeSquad Balance",
+    1 << 9: "Early Supporter", 1 << 14: "Bug Hunter (lvl 2)",
+    1 << 16: "Verified Bot", 1 << 17: "Early Verified Bot Dev",
+    1 << 18: "Certified Moderator", 1 << 22: "Active Developer",
+}
+PREMIUM = {1: "Nitro Classic", 2: "Nitro", 3: "Nitro Basic"}
+
+
 class DiscordLookup(BaseModule):
     name = "discord_id"
     description = (
@@ -69,6 +81,22 @@ class DiscordLookup(BaseModule):
             findings.append(Finding("Discord avatar", img, Severity.LOW,
                                     {"image": img, "bio": gname or uname or "",
                                      "url": img, "platform": "Discord"}))
+        banner = data.get("banner")
+        if banner:
+            bext = "gif" if str(banner).startswith("a_") else "png"
+            burl = f"https://cdn.discordapp.com/banners/{target.value}/{banner}.{bext}?size=600"
+            findings.append(Finding("Banner", burl, Severity.INFO, {"url": burl}))
+        flags = data.get("public_flags", 0) or 0
+        badges = [name for bit, name in BADGES.items() if flags & bit]
+        if badges:
+            findings.append(Finding("Badges", ", ".join(badges), Severity.INFO, {"badges": badges}))
+        prem = data.get("premium_type")
+        if prem:
+            findings.append(Finding("Nitro", PREMIUM.get(prem, f"type {prem}"), Severity.INFO))
+        if data.get("bot"):
+            findings.append(Finding("Account type", "Bot account", Severity.INFO))
+        if data.get("id"):
+            findings.append(Finding("User ID", str(data["id"]), Severity.INFO))
         if not findings:
             findings.append(Finding("Discord", "User found, no public fields exposed.", Severity.INFO))
         return ModuleResult(self.name, target.value, ok=True, findings=findings, raw=data)
