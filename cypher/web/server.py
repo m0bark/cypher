@@ -479,6 +479,8 @@ PAGE_HTML = """<!doctype html>
   .vr .vm .plat{color:var(--pink);font-size:9px;letter-spacing:1px;text-transform:uppercase}
   .vr .vm a{font-size:11px;word-break:break-all;display:block}
   .vr .vm p{margin:2px 0;color:var(--dim);font-size:11px}
+  .ris{display:block;font-size:10px;color:var(--faint);margin-top:2px}
+  .ris a{color:var(--pink2)}
   .vb{display:flex;gap:4px;flex:none}
   .vb button{background:#000;border:1px solid var(--line2);color:var(--dim);font:inherit;font-size:10px;padding:3px 8px;border-radius:5px;cursor:pointer}
   .vb .vy:hover{border-color:var(--grn);color:var(--grn)}
@@ -593,6 +595,11 @@ $("run").onclick=async()=>{
 
 function profiles(d){const o=[];for(const m of d.results)for(const f of (m.findings||[])){const x=f.data||{};
   if(x.platform&&(x.image||x.bio))o.push({platform:x.platform,name:f.detail,bio:x.bio||"",image:x.image||"",url:x.url||""});}return o;}
+function ris(img){const e=encodeURIComponent(img);
+  return '<span class="ris">reverse-search pfp: '+
+    '<a href="https://lens.google.com/uploadbyurl?url='+e+'" target="_blank" rel="noreferrer">Google</a> · '+
+    '<a href="https://yandex.com/images/search?rpt=imageview&url='+e+'" target="_blank" rel="noreferrer">Yandex</a> · '+
+    '<a href="https://tineye.com/search?url='+e+'" target="_blank" rel="noreferrer">TinEye</a></span>';}
 function verifyItems(d){const items=[],seen=new Set();
   for(const p of profiles(d)){if(p.url&&!seen.has(p.url)){seen.add(p.url);items.push({label:p.platform,url:p.url,image:p.image,bio:p.bio});}}
   if(d.graph)for(let i=1;i<d.graph.nodes.length;i++){const n=d.graph.nodes[i];
@@ -604,7 +611,7 @@ function render(d){
   const V=verifyItems(d);
   if(V.length){h+='<div class="pan"><div class="h">VERIFY — is it him?<span class="r">'+V.length+' links</span></div><div class="b">';
     for(const v of V)h+='<div class="vr">'+(v.image?'<img src="'+esc(v.image)+'" referrerpolicy="no-referrer" onerror="this.remove()">':'')+
-      '<div class="vm"><span class="plat">'+esc(v.label)+'</span><a href="'+esc(v.url)+'" target="_blank" rel="noreferrer">'+esc(v.url)+'</a>'+(v.bio?'<p>'+esc(v.bio)+'</p>':'')+'</div>'+
+      '<div class="vm"><span class="plat">'+esc(v.label)+'</span><a href="'+esc(v.url)+'" target="_blank" rel="noreferrer">'+esc(v.url)+'</a>'+(v.bio?'<p>'+esc(v.bio)+'</p>':'')+(v.image?ris(v.image):'')+'</div>'+
       '<div class="vb"><button class="vy">YES</button><button class="vk">MAYBE</button><button class="vn">NO</button></div></div>';
     h+='</div></div>';}
   if(d.graph&&d.graph.nodes.length)h+='<div class="pan"><div class="h">ENTITY NETWORK<span class="r">'+d.graph.nodes.length+' / '+d.graph.links.length+'</span></div><canvas id="graph" width="400" height="260"></canvas></div>';
