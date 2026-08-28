@@ -37,9 +37,9 @@ CATS = {
     "EMAIL": ["email_recon", "breach_check", "holehe", "h8mail", "mosint", "socialscan",
               "google_dorks"],
     "USERNAME": ["username_sites", "github_recon", "sherlock", "maigret", "socialscan",
-                 "telegram", "instagram", "google_dorks"],
+                 "telegram", "instagram", "discord_id", "google_dorks"],
     "NAME": ["google_dorks"], "DORKS": ["google_dorks"],
-    "INSTAGRAM": ["instagram"], "TELEGRAM": ["telegram"],
+    "INSTAGRAM": ["instagram"], "TELEGRAM": ["telegram"], "DISCORD": ["discord_id"],
     "PHONE": ["phone_info", "google_dorks"],
     "IP": ["ip_info", "rdap_whois", "bgpview", "shodan_host", "nmap", "naabu", "rustscan"],
     "WEB": ["http_fingerprint", "whatweb", "wafw00f", "httpx", "katana", "nuclei", "nikto",
@@ -488,6 +488,15 @@ PAGE_HTML = """<!doctype html>
   .f{font-size:11.5px;color:#c8b6c4;padding:3px 0;border-top:1px solid #1a0f1d}
   .f:first-child{border-top:0}
   a{color:var(--pink2);text-decoration:none}
+  .loader{display:flex;flex-direction:column;align-items:center;gap:16px;padding:54px 10px}
+  .loader .ring{width:46px;height:46px;border:2px solid var(--line2);border-top-color:var(--pink);
+    border-radius:50%;animation:spin .8s linear infinite}
+  .loader .scan{width:180px;height:3px;background:var(--line2);border-radius:2px;overflow:hidden;position:relative}
+  .loader .scan::after{content:"";position:absolute;inset:0;width:40%;background:var(--pink);
+    border-radius:2px;animation:sweep 1.1s ease-in-out infinite}
+  .loader .txt{font-size:12px;letter-spacing:2px;color:var(--pink2);text-transform:uppercase}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  @keyframes sweep{0%{left:-40%}100%{left:100%}}
 
   @media(max-width:880px){.app{grid-template-columns:1fr;grid-template-rows:auto 1fr auto}
     .side{grid-row:3;grid-column:1;border-left:0;border-top:1px solid var(--line);max-height:44vh}}
@@ -524,9 +533,9 @@ window.CTX="";
 const CATS={ALL:null,
   DOMAIN:["dns_records","rdap_whois","crtsh_subdomains","wayback","http_fingerprint","whois","subfinder","amass","assetfinder","findomain","sublist3r","dnsrecon","dnsenum","fierce","dnstwist","gau","waybackurls","urlscan","google_dorks"],
   EMAIL:["email_recon","breach_check","holehe","h8mail","mosint","socialscan","google_dorks"],
-  USERNAME:["username_sites","github_recon","sherlock","maigret","socialscan","telegram","instagram","google_dorks"],
+  USERNAME:["username_sites","github_recon","sherlock","maigret","socialscan","telegram","instagram","discord_id","google_dorks"],
   NAME:["google_dorks"],DORKS:["google_dorks"],
-  INSTAGRAM:["instagram"],TELEGRAM:["telegram"],PHONE:["phone_info","google_dorks"],
+  INSTAGRAM:["instagram"],TELEGRAM:["telegram"],DISCORD:["discord_id"],PHONE:["phone_info","google_dorks"],
   IP:["ip_info","rdap_whois","bgpview","shodan_host","nmap","naabu","rustscan"],
   WEB:["http_fingerprint","whatweb","wafw00f","httpx","katana","nuclei","nikto","gobuster","wpscan","sslscan"],
   PORTS:["nmap","naabu","rustscan"],BREACH:["breach_check","h8mail","holehe"]};
@@ -542,18 +551,27 @@ function paint(){$("msgs").innerHTML=HIST.map(m=>
 HIST.push({role:"assistant",content:"Cypher. I already know more than you'd like.\\nGive me a handle, email, domain, IP, or number — yours, or one you're cleared to poke at — and I'll pull what the internet's been quietly filing away.\\nWell? I don't have all day. (I do, actually.)"});
 paint();
 
+let _ldi=null;
+function showLoader(){
+  $("out").innerHTML='<div class="loader"><div class="ring"></div><div class="scan"></div><div class="txt" id="ldtxt">querying platforms…</div></div>';
+  const ph=["querying platforms…","cross-referencing handles…","pulling public profiles…","building the graph…","connecting the dots…"];
+  let i=0;if(_ldi)clearInterval(_ldi);
+  _ldi=setInterval(()=>{const e=$("ldtxt");if(!e){clearInterval(_ldi);_ldi=null;return;}i=(i+1)%ph.length;e.textContent=ph[i];},900);
+}
+function hideLoader(){if(_ldi){clearInterval(_ldi);_ldi=null;}if(document.querySelector(".loader"))$("out").innerHTML="";}
+
 async function say(){
   const t=$("in").value.trim();if(!t)return;$("in").value="";
   HIST.push({role:"user",content:t});
   HIST.push({role:"assistant",content:"digging…",think:true});paint();
-  $("send").disabled=true;
+  $("send").disabled=true;showLoader();
   try{
     const r=await fetch("/chat",{method:"POST",headers:{"Content-Type":"application/json"},
       body:JSON.stringify({messages:HIST.filter(m=>!m.think),context:window.CTX})});
     const d=await r.json();HIST.pop();
     HIST.push({role:"assistant",content:d.ok?d.reply:("⚠ "+d.error)});paint();
-    if(d.ok&&d.scan&&d.scan.ok)render(d.scan);
-  }catch(e){HIST.pop();HIST.push({role:"assistant",content:"⚠ "+e});paint();}
+    if(d.ok&&d.scan&&d.scan.ok)render(d.scan);else hideLoader();
+  }catch(e){HIST.pop();HIST.push({role:"assistant",content:"⚠ "+e});paint();hideLoader();}
   $("send").disabled=false;
 }
 $("send").onclick=say;
@@ -565,7 +583,7 @@ $("run").onclick=async()=>{
     no_ai:true,modules:CATS[$("cat").value]};
   if(!body.target){$("side").textContent="Enter a target.";return;}
   if(!body.authorized){$("side").textContent="Tick 'authorized' first.";return;}
-  $("side").textContent="scanning "+body.target+" ["+$("cat").value+"]…";$("out").innerHTML="";
+  $("side").textContent="scanning "+body.target+" ["+$("cat").value+"]…";showLoader();
   try{const r=await fetch("/scan",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
     const d=await r.json();
     if(!d.ok){$("side").textContent="✗ "+d.error;return;}
