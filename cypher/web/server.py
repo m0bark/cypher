@@ -397,23 +397,21 @@ PAGE_HTML = """<!doctype html>
 <title>CYPHER</title>
 <style>
   :root{
-    --bg:#0f0810;--panel:#170d16;--panel2:#1d1220;--line:#3a2233;--line2:#4d2c43;
+    --bg:#000000;--panel:#000000;--panel2:#050505;--line:#ff5db1;--line2:#7a2f53;
     --pink:#ff5db1;--pink2:#ff9ed6;--pink3:#ffd0ea;
-    --text:#f0dced;--dim:#b088a0;--faint:#75566b;
+    --text:#f4eef2;--dim:#b89aab;--faint:#7a6070;
     --grn:#5ef2a8;--red:#ff6b8a;--blu:#7bb8ff;--vio:#c79bff;
   }
   *{box-sizing:border-box}
   html,body{height:100%}
-  body{margin:0;background:
-    radial-gradient(1200px 600px at 80% -10%, #24122480, transparent),
-    var(--bg);color:var(--text);
+  body{margin:0;background:#000;color:var(--text);
     font:14px/1.55 "Cascadia Code","Consolas",ui-monospace,monospace}
   ::-webkit-scrollbar{width:9px;height:9px}
   ::-webkit-scrollbar-thumb{background:#3a2233;border-radius:6px}
   .app{display:grid;grid-template-columns:1fr 420px;grid-template-rows:auto 1fr;height:100vh}
 
   .top{grid-column:1/-1;display:flex;align-items:center;gap:14px;padding:12px 20px;
-    background:#140a13;border-bottom:1px solid var(--line)}
+    background:#000000;border-bottom:1px solid var(--line)}
   .brand{font-weight:700;letter-spacing:4px;font-size:20px;color:var(--pink)}
   .brand span{color:var(--pink3)}
   .tag{color:var(--faint);font-size:12px;letter-spacing:.5px}
@@ -427,54 +425,67 @@ PAGE_HTML = """<!doctype html>
   .m{max-width:760px}
   .m .who{font-size:10px;letter-spacing:2px;margin-bottom:4px}
   .m.a .who{color:var(--pink)} .m.u .who{color:var(--dim);text-align:right}
-  .m.a .bub{background:linear-gradient(180deg,#211324,#1a0f1d);border:1px solid var(--line);
+  .m.a .bub{background:linear-gradient(180deg,#000000,#050505);border:1px solid var(--line);
     border-left:2px solid var(--pink);border-radius:0 12px 12px 12px;padding:12px 15px;
     white-space:pre-wrap;color:var(--text)}
   .m.u{align-self:flex-end}
-  .m.u .bub{background:#2a1830;border:1px solid var(--line2);border-radius:12px 0 12px 12px;
+  .m.u .bub{background:#0a0510;border:1px solid var(--line2);border-radius:12px 0 12px 12px;
     padding:10px 14px;white-space:pre-wrap;color:var(--pink3)}
   .m.a.think .bub{color:var(--faint);font-style:italic}
-  .inbar{border-top:1px solid var(--line);padding:14px 20px;display:flex;gap:12px;background:#140a13}
-  .inbar textarea{flex:1;background:#0c0710;border:1px solid var(--line);border-radius:12px;
+  .inbar{border-top:1px solid var(--line);padding:14px 20px;display:flex;gap:12px;background:#000000}
+  .inbar textarea{flex:1;background:#050505;border:1px solid var(--line);border-radius:12px;
     color:var(--text);font:inherit;font-size:14px;padding:12px 14px;resize:none;height:52px}
   .inbar textarea:focus{outline:none;border-color:var(--pink);box-shadow:0 0 0 3px #ff5db122}
-  .inbar .snd{background:var(--pink);color:#2a061c;border:0;border-radius:12px;font:inherit;
-    font-weight:700;letter-spacing:1px;padding:0 26px;cursor:pointer}
-  .inbar .snd:hover{background:var(--pink2)} .inbar .snd:disabled{opacity:.5;cursor:not-allowed}
+  .inbar .snd{background:#000;color:var(--pink);border:1px solid var(--pink);border-radius:12px;
+    font:inherit;font-weight:700;letter-spacing:1px;padding:0 26px;cursor:pointer}
+  .inbar .snd:hover{background:#150109} .inbar .snd:disabled{opacity:.4;cursor:not-allowed}
 
   /* right = live results as Cypher digs */
   .side{grid-row:2;grid-column:2;border-left:1px solid var(--line);overflow-y:auto;
-    background:#130b12;padding:14px;display:flex;flex-direction:column;gap:12px}
+    background:#000000;padding:14px;display:flex;flex-direction:column;gap:12px}
   .direct{display:flex;gap:8px;align-items:center}
-  .direct input.t{flex:1;background:#0c0710;border:1px solid var(--line);border-radius:9px;
+  .direct input.t{flex:1;background:#050505;border:1px solid var(--line);border-radius:9px;
     color:var(--text);font:inherit;font-size:12px;padding:9px 11px}
   .direct input.t:focus{outline:none;border-color:var(--pink)}
-  .direct .catsel{background:#0c0710;border:1px solid var(--line);border-radius:9px;
+  .direct .catsel{background:#050505;border:1px solid var(--line);border-radius:9px;
     color:var(--pink2);font:inherit;font-size:11px;padding:8px 6px;cursor:pointer}
   .direct .catsel:focus{outline:none;border-color:var(--pink)}
-  .direct .go{background:var(--pink);color:#2a061c;border:0;border-radius:9px;font:inherit;
-    font-weight:700;padding:0 16px;align-self:stretch;cursor:pointer}
+  .direct .go{background:#000;color:var(--pink);border:1px solid var(--pink);border-radius:9px;
+    font:inherit;font-weight:700;padding:0 16px;align-self:stretch;cursor:pointer}
   .authrow{font-size:11px;color:var(--pink2);display:flex;align-items:center;gap:6px}
   .authrow input{accent-color:var(--pink)}
   .hint{color:var(--faint);font-size:11px}
   .pan{border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--panel)}
-  .pan>.h{background:#1c1020;color:var(--pink);padding:6px 11px;font-size:10px;letter-spacing:1.5px;
+  .pan>.h{background:#080808;color:var(--pink);padding:6px 11px;font-size:10px;letter-spacing:1.5px;
     border-bottom:1px solid var(--line);display:flex;justify-content:space-between}
   .pan>.h .r{color:var(--faint)}
   .pan>.b{padding:10px}
-  canvas#graph{width:100%;height:260px;display:block;background:#0c0710;border-radius:6px}
+  canvas#graph{width:100%;height:260px;display:block;background:#050505;border-radius:6px}
   .summary{white-space:pre-wrap;font-size:12px;color:#e6d2e0}
-  .pc{display:flex;gap:9px;padding:8px 0;border-top:1px solid #241426}
+  .pc{display:flex;gap:9px;padding:8px 0;border-top:1px solid #1a0f1d}
   .pc:first-child{border-top:0}
   .pc img{width:42px;height:42px;border-radius:8px;object-fit:cover;background:#221;flex:none}
   .pc .plat{color:var(--pink);font-size:9px;letter-spacing:1px}
   .pc b{display:block;font-size:12px}.pc p{margin:1px 0;color:var(--dim);font-size:11px;
     display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
   .pc .cf{display:flex;flex-direction:column;gap:4px}
-  .pc .cf button{background:#0c0710;border:1px solid var(--line);color:var(--dim);font:inherit;
+  .pc .cf button{background:#050505;border:1px solid var(--line);color:var(--dim);font:inherit;
     font-size:10px;padding:2px 7px;border-radius:5px;cursor:pointer}
-  .pc.mine{background:#12241a} .pc.no{opacity:.35}
-  .f{font-size:11.5px;color:#c8b6c4;padding:3px 0;border-top:1px solid #241426}
+  .pc.mine{background:#0a1a12} .pc.no{opacity:.35}
+  .vr{display:flex;gap:9px;align-items:center;padding:8px 0;border-top:1px solid var(--line2)}
+  .vr:first-child{border-top:0}
+  .vr img{width:38px;height:38px;border-radius:8px;object-fit:cover;background:#111;flex:none;border:1px solid var(--line)}
+  .vr .vm{flex:1;min-width:0}
+  .vr .vm .plat{color:var(--pink);font-size:9px;letter-spacing:1px;text-transform:uppercase}
+  .vr .vm a{font-size:11px;word-break:break-all;display:block}
+  .vr .vm p{margin:2px 0;color:var(--dim);font-size:11px}
+  .vb{display:flex;gap:4px;flex:none}
+  .vb button{background:#000;border:1px solid var(--line2);color:var(--dim);font:inherit;font-size:10px;padding:3px 8px;border-radius:5px;cursor:pointer}
+  .vb .vy:hover{border-color:var(--grn);color:var(--grn)}
+  .vb .vk:hover{border-color:var(--pink2);color:var(--pink2)}
+  .vb .vn:hover{border-color:var(--red);color:var(--red)}
+  .vr.v-yes{outline:1px solid var(--grn)} .vr.v-maybe{outline:1px solid var(--pink2)} .vr.v-no{opacity:.3}
+  .f{font-size:11.5px;color:#c8b6c4;padding:3px 0;border-top:1px solid #1a0f1d}
   .f:first-child{border-top:0}
   a{color:var(--pink2);text-decoration:none}
 
@@ -486,7 +497,6 @@ PAGE_HTML = """<!doctype html>
   <div class="top">
     <span class="brand">CY<span>PH</span>ER</span>
     <span class="tag">he already knows. ask nicely.</span>
-    <span class="pill" id="pill"></span>
   </div>
 
   <div class="chat">
@@ -521,11 +531,6 @@ const CATS={ALL:null,
   WEB:["http_fingerprint","whatweb","wafw00f","httpx","katana","nuclei","nikto","gobuster","wpscan","sslscan"],
   PORTS:["nmap","naabu","rustscan"],BREACH:["breach_check","h8mail","holehe"]};
 Object.keys(CATS).forEach(k=>{const o=document.createElement("option");o.value=k;o.textContent=k;$("cat").appendChild(o);});
-fetch("/config").then(r=>r.json()).then(c=>{
-  const b={cli:"<span class=on>ONLINE · subscription</span>",api:"<span class=on>ONLINE · API</span>",
-    none:"<span class=off>ASLEEP — no AI backend</span>"}[c.backend]||"";
-  $("pill").innerHTML="CYPHER "+b;
-}).catch(()=>{});
 
 const HIST=[];
 function esc(s){return (s||"").replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));}
@@ -570,15 +575,19 @@ $("run").onclick=async()=>{
 
 function profiles(d){const o=[];for(const m of d.results)for(const f of (m.findings||[])){const x=f.data||{};
   if(x.platform&&(x.image||x.bio))o.push({platform:x.platform,name:f.detail,bio:x.bio||"",image:x.image||"",url:x.url||""});}return o;}
+function verifyItems(d){const items=[],seen=new Set();
+  for(const p of profiles(d)){if(p.url&&!seen.has(p.url)){seen.add(p.url);items.push({label:p.platform,url:p.url,image:p.image,bio:p.bio});}}
+  if(d.graph)for(let i=1;i<d.graph.nodes.length;i++){const n=d.graph.nodes[i];
+    if(n.group!=="module"&&/^https?:/.test(n.id||"")&&!seen.has(n.id)){seen.add(n.id);items.push({label:n.group,url:n.id});}}
+  return items;}
 function render(d){
   window.CTX="TARGET: "+d.target+"\\n"+d.results.flatMap(m=>(m.findings||[]).map(f=>"["+m.module+"] "+f.title+": "+f.detail)).join("\\n");
   let h="";
-  const P=profiles(d);
-  if(P.length){h+='<div class="pan"><div class="h">IS THIS YOU?<span class="r">'+P.length+'</span></div><div class="b">';
-    for(const p of P)h+='<div class="pc">'+(p.image?'<img src="'+esc(p.image)+'" referrerpolicy="no-referrer" onerror="this.remove()">':'')+
-      '<div style="flex:1;min-width:0"><span class="plat">'+esc(p.platform)+'</span><b>'+esc(p.name)+'</b>'+(p.bio?'<p>'+esc(p.bio)+'</p>':'')+
-      (p.url?'<a href="'+esc(p.url)+'" target="_blank" rel="noreferrer">'+esc(p.url)+'</a>':'')+'</div>'+
-      '<div class="cf"><button class="y">MINE</button><button class="n">NOT</button></div></div>';
+  const V=verifyItems(d);
+  if(V.length){h+='<div class="pan"><div class="h">VERIFY — is it him?<span class="r">'+V.length+' links</span></div><div class="b">';
+    for(const v of V)h+='<div class="vr">'+(v.image?'<img src="'+esc(v.image)+'" referrerpolicy="no-referrer" onerror="this.remove()">':'')+
+      '<div class="vm"><span class="plat">'+esc(v.label)+'</span><a href="'+esc(v.url)+'" target="_blank" rel="noreferrer">'+esc(v.url)+'</a>'+(v.bio?'<p>'+esc(v.bio)+'</p>':'')+'</div>'+
+      '<div class="vb"><button class="vy">YES</button><button class="vk">MAYBE</button><button class="vn">NO</button></div></div>';
     h+='</div></div>';}
   if(d.graph&&d.graph.nodes.length)h+='<div class="pan"><div class="h">ENTITY NETWORK<span class="r">'+d.graph.nodes.length+' / '+d.graph.links.length+'</span></div><canvas id="graph" width="400" height="260"></canvas></div>';
   h+='<div class="pan"><div class="h">BRIEFING<span class="r">'+(d.ai_used?"CLAUDE":"RAW")+'</span></div><div class="b summary">'+esc(d.summary)+'</div></div>';
@@ -588,9 +597,11 @@ function render(d){
   $("out").innerHTML=h;
   if(d.graph&&d.graph.nodes.length)drawGraph(d.graph);
 }
-$("out").addEventListener("click",e=>{const c=e.target.closest(".pc");if(!c)return;
-  if(e.target.classList.contains("y")){c.classList.toggle("mine");c.classList.remove("no");}
-  if(e.target.classList.contains("n")){c.classList.toggle("no");c.classList.remove("mine");}});
+$("out").addEventListener("click",e=>{const c=e.target.closest(".vr");if(!c)return;
+  const cl=e.target.classList;
+  if(cl.contains("vy")||cl.contains("vk")||cl.contains("vn")){
+    c.classList.remove("v-yes","v-maybe","v-no");
+    c.classList.add(cl.contains("vy")?"v-yes":cl.contains("vk")?"v-maybe":"v-no");}});
 
 let _raf=null;
 function drawGraph(g){const cv=$("graph");if(!cv)return;const ctx=cv.getContext("2d"),W=cv.width,H=cv.height;
