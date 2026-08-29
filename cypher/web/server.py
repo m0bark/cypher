@@ -276,6 +276,15 @@ PAGE_HTML = """<!doctype html>
   .chk{font-size:12px;color:var(--pink2);display:flex;align-items:center;gap:6px;cursor:pointer;user-select:none}
   .chk input{accent-color:var(--pink)}
   .opts .hint{margin-left:auto}
+  .cmd2{display:flex;gap:8px;align-items:stretch;max-width:900px;margin:0 0 18px}
+  .cmd2 .cmdmark2{display:flex;align-items:center;justify-content:center;width:40px;flex:none;
+    background:#0a0510;border:1px solid var(--line2);border-radius:10px;font-size:15px}
+  .cmd2 .t2{flex:1;background:#0a0510;border:1px solid var(--line2);border-radius:10px;color:var(--text);
+    font:inherit;font-size:13px;padding:10px 13px}
+  .cmd2 .t2:focus{outline:none;border-color:var(--pink)}
+  .cmd2 .go2{background:#0a0510;border:1px solid var(--pink);color:var(--pink);border-radius:10px;
+    font:inherit;font-weight:700;font-size:12px;letter-spacing:.5px;padding:0 18px;cursor:pointer}
+  .cmd2 .go2:hover{background:#150109}
   .empty{grid-column:1/-1;text-align:center;color:var(--faint);padding:64px 20px}
   .empty .ei{font-size:46px;color:var(--line2);line-height:1}
   .empty p{margin:10px 0} .empty .es{font-size:11px;letter-spacing:.5px;color:var(--faint)}
@@ -375,6 +384,11 @@ PAGE_HTML = """<!doctype html>
       <label class="chk"><input type="checkbox" id="pivot" checked> follow leads &middot; pivot into discovered accounts</label>
       <span class="hint" id="side">Enter a target and hit RUN.</span>
     </div>
+    <div class="cmd2">
+      <span class="cmdmark2">🖼</span>
+      <input id="imgurl" class="t2" placeholder="reverse image search — paste an image / pfp URL">
+      <button id="imggo" class="go2">SEARCH IMAGE</button>
+    </div>
     <div id="out"><div class="empty"><div class="ei">⌕</div><p>Point Cypher at a target and hit RUN.</p>
       <p class="es">handles &middot; emails &middot; domains &middot; IPs &middot; phone numbers &middot; crypto wallets &middot; images</p></div></div>
   </div>
@@ -420,19 +434,31 @@ async function runScan(){
 $("run").onclick=runScan;
 $("target").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();runScan();}});
 
+function imageSearch(u){u=(u||"").trim();if(!u)return;
+  let h='<div class="pan"><div class="h">REVERSE IMAGE SEARCH<span class="r">reuse / same-pfp</span></div><div class="b">'+
+    '<div class="vr"><img src="'+esc(u)+'" referrerpolicy="no-referrer" onerror="this.remove()">'+
+    '<div class="vm"><span class="plat">image</span><a href="'+esc(u)+'" target="_blank" rel="noreferrer">'+esc(u)+'</a>'+ris(u)+'</div></div>'+
+    '<p class="ns">Finds where this image appears online — reuse, impersonation, catfish, or the same picture on another account. It does not identify a face.</p></div></div>';
+  $("out").innerHTML=h;window.LAST=null;}
+$("imggo").onclick=()=>imageSearch($("imgurl").value);
+$("imgurl").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();imageSearch($("imgurl").value);}});
+
 function badImg(u){return !u||/telegram\\.org|t_logo|logo\\.(png|svg|jpe?g)|default[-_]?(avatar|user|profile|pic)|placeholder|favicon|sprite|blank|no[-_]?(photo|avatar)/i.test(u);}
 function profiles(d){const o=[];for(const m of d.results)for(const f of (m.findings||[])){const x=f.data||{};
   const img=(x.image&&!badImg(x.image))?x.image:"";
   if(x.platform&&(img||x.bio))o.push({platform:x.platform,name:f.detail,bio:x.bio||"",image:img,url:x.url||""});}return o;}
-function ris(img){const e=encodeURIComponent(img);
-  const t=[["Google Lens","https://lens.google.com/uploadbyurl?url="+e],
+function risEngines(img){const e=encodeURIComponent(img);
+  return [["Google Lens","https://lens.google.com/uploadbyurl?url="+e],
     ["Google Images","https://www.google.com/searchbyimage?image_url="+e],
     ["Yandex","https://yandex.com/images/search?rpt=imageview&url="+e],
     ["Bing","https://www.bing.com/images/search?view=detailv2&iss=sbi&q=imgurl:"+e],
     ["TinEye","https://tineye.com/search?url="+e],
-    ["Karma Decay","http://karmadecay.com/search?q="+e]];
+    ["Baidu","https://graph.baidu.com/details?isfromtusoupc=1&tn=pc&image="+e],
+    ["SauceNAO","https://saucenao.com/search.php?url="+e],
+    ["Karma Decay","http://karmadecay.com/search?q="+e]];}
+function ris(img){
   return '<span class="ris">reverse-search pfp: '+
-    t.map(x=>'<a href="'+x[1]+'" target="_blank" rel="noreferrer">'+x[0]+'</a>').join(' · ')+'</span>';}
+    risEngines(img).map(x=>'<a href="'+x[1]+'" target="_blank" rel="noreferrer">'+x[0]+'</a>').join(' · ')+'</span>';}
 function verifyItems(d){const items=[],seen=new Set();
   for(const p of profiles(d)){if(p.url&&!seen.has(p.url)){seen.add(p.url);items.push({label:p.platform,url:p.url,image:p.image,bio:p.bio});}}
   if(d.graph)for(let i=1;i<d.graph.nodes.length;i++){const n=d.graph.nodes[i];

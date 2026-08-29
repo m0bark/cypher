@@ -21,6 +21,8 @@ ENGINES = [
     ("Yandex Images", "https://yandex.com/images/search?rpt=imageview&url={}"),
     ("Bing Visual", "https://www.bing.com/images/search?view=detailv2&iss=sbi&q=imgurl:{}"),
     ("TinEye", "https://tineye.com/search?url={}"),
+    ("Baidu", "https://graph.baidu.com/details?isfromtusoupc=1&tn=pc&image={}"),
+    ("SauceNAO", "https://saucenao.com/search.php?url={}"),
     ("Karma Decay (Reddit)", "http://karmadecay.com/search?q={}"),
 ]
 
