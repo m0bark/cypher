@@ -468,12 +468,17 @@ PAGE_HTML = """<!doctype html>
   .authrow{font-size:11px;color:var(--pink2);display:flex;align-items:center;gap:6px}
   .authrow input{accent-color:var(--pink)}
   .hint{color:var(--faint);font-size:11px}
-  body.noai .chat{display:none}
-  body.noai .side{grid-column:1/-1;border-left:0;padding:18px 26px}
-  body.noai .direct{max-width:760px}
-  body.noai .hint{margin-bottom:6px}
-  body.noai #out{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));
+  body.noai .chat,body.wide .chat{display:none}
+  body.noai .side,body.wide .side{grid-column:1/-1;border-left:0;padding:18px 26px}
+  body.noai .direct,body.wide .direct{max-width:760px}
+  body.noai .hint,body.wide .hint{margin-bottom:6px}
+  body.noai #out,body.wide #out{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));
     gap:14px;align-items:start}
+  .toggle{margin-left:auto;background:#0a0510;border:1px solid var(--line2);color:var(--pink2);
+    font:inherit;font-size:11px;letter-spacing:1px;padding:5px 12px;border-radius:8px;cursor:pointer}
+  .toggle:hover{border-color:var(--pink);color:var(--pink)}
+  body.noai .toggle{display:none}
+  body.wide .toggle{border-color:var(--pink);color:var(--pink)}
   .pan{border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--panel)}
   .pan>.h{background:#080808;color:var(--pink);padding:6px 11px;font-size:10px;letter-spacing:1.5px;
     border-bottom:1px solid var(--line);display:flex;justify-content:space-between}
@@ -551,6 +556,7 @@ PAGE_HTML = """<!doctype html>
   <div class="top">
     <span class="brand">CY<span>PH</span>ER</span>
     <span class="tag">he already knows. ask nicely.</span>
+    <button id="wide" class="toggle" title="Collapse the chat and give the whole screen to scanning">⛶ SCANNER</button>
   </div>
 
   <div class="chat">
@@ -576,6 +582,11 @@ PAGE_HTML = """<!doctype html>
 <script>
 const $=id=>document.getElementById(id);
 window.CTX="";
+function applyWide(on){document.body.classList.toggle("wide",on);
+  $("wide").textContent=on?"💬 CHAT":"⛶ SCANNER";
+  try{localStorage.setItem("cypher_wide",on?"1":"0");}catch(e){}}
+try{if(localStorage.getItem("cypher_wide")==="1")applyWide(true);}catch(e){}
+$("wide").onclick=()=>applyWide(!document.body.classList.contains("wide"));
 const CATS={ALL:null,
   DOMAIN:["dns_records","rdap_whois","crtsh_subdomains","wayback","http_fingerprint","whois","subfinder","amass","assetfinder","findomain","sublist3r","dnsrecon","dnsenum","fierce","dnstwist","gau","waybackurls","urlscan","google_dorks"],
   EMAIL:["email_recon","breach_check","holehe","h8mail","mosint","socialscan","google_dorks"],
