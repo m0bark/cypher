@@ -468,6 +468,12 @@ PAGE_HTML = """<!doctype html>
   .authrow{font-size:11px;color:var(--pink2);display:flex;align-items:center;gap:6px}
   .authrow input{accent-color:var(--pink)}
   .hint{color:var(--faint);font-size:11px}
+  body.noai .chat{display:none}
+  body.noai .side{grid-column:1/-1;border-left:0;padding:18px 26px}
+  body.noai .direct{max-width:760px}
+  body.noai .hint{margin-bottom:6px}
+  body.noai #out{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));
+    gap:14px;align-items:start}
   .pan{border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--panel)}
   .pan>.h{background:#080808;color:var(--pink);padding:6px 11px;font-size:10px;letter-spacing:1.5px;
     border-bottom:1px solid var(--line);display:flex;justify-content:space-between}
@@ -591,6 +597,8 @@ function paint(){$("msgs").innerHTML=HIST.map(m=>
 let NOAI=false;
 fetch("/config").then(r=>r.json()).then(c=>{
   NOAI=(c.backend==="none");
+  if(NOAI){document.body.classList.add("noai");
+    $("side").textContent="Scans-only mode — enter a target, pick a category, tick authorized, hit RUN. Click any graph node to pivot.";}
   HIST.push({role:"assistant",content:NOAI
     ? "Scans-only mode — no AI signed in on this machine, and that's fine.\\nUse the RUN bar on the right: type a target, pick a category, tick authorized, hit RUN. You get the entity graph, exposure grade, findings, and a downloadable report.\\n(Want me actually talking? Sign this machine into Claude Code and restart — otherwise, carry on without me.)"
     : "Cypher. I already know more than you'd like.\\nGive me a handle, email, domain, IP, or number — yours, or one you're cleared to poke at — and I'll pull what the internet's been quietly filing away.\\nWell? I don't have all day. (I do, actually.)"});
