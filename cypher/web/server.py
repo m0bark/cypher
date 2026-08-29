@@ -29,6 +29,10 @@ from ..report.timeline import build_timeline
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8765
 ENV_PATH = ".env"
+_PROXY_UA = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+)
 
 CATS = {
     "ALL": None,
@@ -194,12 +198,45 @@ class Handler(BaseHTTPRequestHandler):
         self._send(code, json.dumps(obj).encode("utf-8"), "application/json")
 
     def do_GET(self):
-        if self.path in ("/", "/index.html"):
+        from urllib.parse import urlparse
+
+        path = urlparse(self.path).path
+        if path in ("/", "/index.html"):
             self._send(200, PAGE_HTML.encode("utf-8"), "text/html; charset=utf-8")
-        elif self.path == "/config":
+        elif path == "/config":
             self._json(200, _config())
+        elif path == "/img":
+            self._proxy_image(urlparse(self.path).query)
         else:
             self._send(404, b"not found", "text/plain")
+
+    def _proxy_image(self, query: str) -> None:
+        from urllib.parse import parse_qs, urlparse
+
+        url = (parse_qs(query).get("u") or [""])[0]
+        parsed = urlparse(url)
+        if parsed.scheme not in ("http", "https") or not parsed.netloc:
+            self._send(400, b"bad url", "text/plain")
+            return
+        try:
+            import httpx
+
+            headers = {"User-Agent": _PROXY_UA, "Accept": "image/*,*/*"}
+            if "fbcdn" in parsed.netloc or "cdninstagram" in parsed.netloc:
+                headers["Referer"] = "https://www.instagram.com/"
+            with httpx.Client(follow_redirects=True, timeout=12) as client:
+                resp = client.get(url, headers=headers)
+            ctype = resp.headers.get("content-type", "")
+            if resp.status_code != 200 or not ctype.startswith("image"):
+                self._send(404, b"", "text/plain")
+                return
+            body = resp.content
+            if len(body) > 8_000_000:
+                self._send(413, b"", "text/plain")
+                return
+            self._send(200, body, ctype.split(";")[0])
+        except Exception:
+            self._send(502, b"", "text/plain")
 
     def do_POST(self):
         if self.path != "/scan":
@@ -434,7 +471,7 @@ $("target").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault(
 
 function imageSearch(u){u=(u||"").trim();if(!u)return;
   let h='<div class="pan"><div class="h">REVERSE IMAGE SEARCH<span class="r">reuse / same-pfp</span></div><div class="b">'+
-    '<div class="vr"><img src="'+esc(u)+'" referrerpolicy="no-referrer" onerror="this.remove()">'+
+    '<div class="vr"><img src="'+esc(proxied(u))+'" onerror="this.remove()">'+
     '<div class="vm"><span class="plat">image</span><a href="'+esc(u)+'" target="_blank" rel="noreferrer">'+esc(u)+'</a>'+ris(u)+'</div></div>'+
     '<p class="ns">Finds where this image appears online — reuse, impersonation, catfish, or the same picture on another account. It does not identify a face.</p></div></div>';
   $("out").innerHTML=h;window.LAST=null;}
@@ -442,6 +479,7 @@ $("imggo").onclick=()=>imageSearch($("imgurl").value);
 $("imgurl").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();imageSearch($("imgurl").value);}});
 
 function badImg(u){return !u||/telegram\\.org|t_logo|logo\\.(png|svg|jpe?g)|default[-_]?(avatar|user|profile|pic)|placeholder|favicon|sprite|blank|no[-_]?(photo|avatar)/i.test(u);}
+function proxied(u){return "/img?u="+encodeURIComponent(u);}
 function profiles(d){const o=[];for(const m of d.results)for(const f of (m.findings||[])){const x=f.data||{};
   const img=(x.image&&!badImg(x.image))?x.image:"";
   if(x.platform&&(img||x.bio))o.push({platform:x.platform,name:f.detail,bio:x.bio||"",image:img,url:x.url||""});}return o;}
@@ -485,7 +523,7 @@ function render(d){
   if(V.length){h+='<div class="pan"><div class="h">VERIFY — is it him?<span class="r">'+V.length+' accounts</span></div><div class="b">';
     for(const v of V){const pfpLine = v.pfp?ris(v.pfp)
       :'<span class="ris">pfp: <a href="'+esc(v.url)+'" target="_blank" rel="noreferrer">open profile</a> to grab it, then use Search Image above</span>';
-      h+='<div class="vr">'+(v.pfp?'<img src="'+esc(v.pfp)+'" referrerpolicy="no-referrer" onerror="this.remove()">':'')+
+      h+='<div class="vr">'+(v.pfp?'<img src="'+esc(proxied(v.pfp))+'" onerror="this.remove()">':'')+
       '<div class="vm"><span class="plat">'+esc(v.label)+'</span><a href="'+esc(v.url)+'" target="_blank" rel="noreferrer">'+esc(v.url)+'</a>'+(v.bio?'<p>'+esc(v.bio)+'</p>':'')+pfpLine+'</div>'+
       '<div class="vb"><button class="vy">YES</button><button class="vk">MAYBE</button><button class="vn">NO</button></div></div>';}
     h+='</div></div>';}
