@@ -37,6 +37,8 @@ if errorlevel 1 (
   echo.
 )
 
+for /f "tokens=5" %%p in ('netstat -ano ^| findstr :8765 ^| findstr LISTENING') do taskkill /F /PID %%p >nul 2>nul
+
 echo Starting Cypher UI - your browser will open at http://127.0.0.1:8765
 ".venv\Scripts\python.exe" -m cypher.web
 pause

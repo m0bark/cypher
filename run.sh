@@ -19,5 +19,7 @@ if ! command -v claude >/dev/null 2>&1; then
   echo ""
 fi
 
+command -v fuser >/dev/null 2>&1 && fuser -k 8765/tcp >/dev/null 2>&1 || true
+
 echo "Starting Cypher UI at http://127.0.0.1:8765 ..."
 exec ./.venv/bin/python -m cypher.web
