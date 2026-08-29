@@ -218,36 +218,30 @@ def _template_summary(inv: Investigation, entities: dict | None = None) -> str:
         for f in res.findings
     ]
     findings.sort(key=lambda mf: _SEVERITY_ORDER.get(mf[1].severity, 3))
-    lines = [f"# Summary for {inv.target}", ""]
+    lines = [f"Target: {inv.target.value}", ""]
     if not findings:
         lines.append("No findings were produced.")
         return "\n".join(lines)
 
     if entities:
-        lines.append("## Connections (consolidated footprint)")
         corroborated = {v: d for v, d in entities.items() if len(d["modules"]) > 1}
         if corroborated:
-            lines.append("_Corroborated — surfaced by more than one module:_")
+            lines.append("Corroborated (more than one source):")
             for value, d in sorted(corroborated.items(), key=lambda kv: -len(kv[1]["modules"])):
-                lines.append(f"- **{value}** ({d['type']}) — via {', '.join(d['modules'])}")
+                lines.append(f"• {value} ({d['type']})")
+            lines.append("")
         by_type: dict[str, list[str]] = {}
         for value, d in entities.items():
             by_type.setdefault(d["type"], []).append(value)
-        for etype, values in sorted(by_type.items()):
-            lines.append(f"- {etype}: {', '.join(sorted(values))}")
-        lines.append("")
-        lines.append("_Enable Claude (ANTHROPIC_API_KEY) for a real correlation "
-                     "assessment — clusters, confidence, timeline, and exposure._")
+        lines.append(f"Footprint: {len(entities)} linked identities across "
+                     f"{len(by_type)} types ({', '.join(sorted(by_type))}).")
         lines.append("")
 
     notable = [mf for mf in findings if mf[1].severity in (Severity.HIGH, Severity.MEDIUM)]
     if notable:
-        lines.append("## Notable exposure")
-        for module, f in notable:
-            lines.append(f"- **[{f.severity.value.upper()}]** {f.title} — {f.detail}  _({module})_")
-        lines.append("")
-
-    lines.append("## All findings")
-    for module, f in findings:
-        lines.append(f"- {f.title}: {f.detail}  _({module})_")
+        lines.append("Notable exposure:")
+        for module, f in notable[:12]:
+            lines.append(f"• [{f.severity.value.upper()}] {f.title} — {f.detail}")
+    else:
+        lines.append("Nothing high-severity surfaced. See the findings panel for detail.")
     return "\n".join(lines)

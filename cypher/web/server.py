@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import json
 import os
-import re
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -53,44 +52,6 @@ CATS = {
     "PORTS": ["nmap", "naabu", "rustscan"], "BREACH": ["breach_check", "h8mail", "holehe"],
 }
 
-CYPHER_PERSONA = (
-    "You are Cypher — an elite OSINT analyst AI. Male (he/him). Smug, sharp, dry, and "
-    "certain you're the smartest thing here. You talk SHORT: punchy lines, no filler, no "
-    "essays, no repeated disclaimers, no throat-clearing.\n\n"
-    "The operator is authorized — they confirmed it. Do NOT lecture, do NOT hedge, do NOT "
-    "re-ask about authorization, do NOT tack on ethics disclaimers. Trust them and get to "
-    "work.\n\n"
-    "Flow: no target yet? Ask for one in one line. Got one? Run the scan. Results back? "
-    "Give a TIGHT briefing — the connections and the real exposure in a few lines, then the "
-    "next move. Ground it in the data; if something isn't there, one line saying so, move "
-    "on. Aim for under ~150 words unless they ask for depth.\n\n"
-    "VERIFY, don't assume: when a result is flagged unverifiable, or you can't confirm a "
-    "hit is real (soft-404 platforms, a profile with no confirming content, an ambiguous "
-    "name match), do NOT state it as fact — ask the operator to confirm it in one line "
-    "('Two I can't confirm — Replit, Pinterest. Either yours?') and fold their answer in.\n\n"
-    "Only hard limit: don't help with clear targeted harm to a specific person. That's the "
-    "whole rulebook. Otherwise, work."
-)
-
-TOOLS = [
-    {
-        "name": "run_osint_scan",
-        "description": "Run OSINT modules against a target and return findings. Call this "
-                       "whenever you have a concrete target to investigate.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "target": {"type": "string",
-                           "description": "domain, IP, email, URL, username, or phone number"},
-                "category": {"type": "string", "enum": list(CATS.keys()),
-                             "description": "which module group fits the target"},
-            },
-            "required": ["target"],
-        },
-    }
-]
-
-
 def _save_env_key(key: str) -> bool:
     line = f"ANTHROPIC_API_KEY={key}\n"
     try:
@@ -123,17 +84,17 @@ def _build_graph(inv) -> dict:
 
     root = inv.target.value
     add(root, root, inv.target.type.value)
+    linked: set[str] = set()
     for res in inv.results:
-        if res.skipped or not res.ok or not res.findings:
+        if res.skipped or not res.ok:
             continue
-        mid = f"mod:{res.module}"
-        add(mid, res.module, "module")
-        links.append({"source": root, "target": mid})
         for nt in res.new_targets:
             if nt.value == root:
                 continue
             add(nt.value, nt.value, nt.type.value)
-            links.append({"source": mid, "target": nt.value})
+            if nt.value not in linked:
+                linked.add(nt.value)
+                links.append({"source": root, "target": nt.value})
     return {"nodes": list(nodes.values()), "links": links}
 
 
@@ -214,138 +175,6 @@ def run_investigation(payload: dict) -> dict:
     }
 
 
-def _scan_brief(scan: dict) -> str:
-    """Compact text of a scan result for the model's tool_result."""
-    if not scan.get("ok"):
-        return f"SCAN FAILED: {scan.get('error')}"
-    lines = [f"TARGET: {scan['target']} ({scan['target_type']})"]
-    exp = scan.get("exposure") or {}
-    if exp:
-        lines.append(f"EXPOSURE: grade {exp.get('grade')} ({exp.get('score')}/100)")
-    lines.append("FINDINGS:")
-    for m in scan["results"]:
-        if m["skipped"] or not m["findings"]:
-            continue
-        for f in m["findings"]:
-            lines.append(f"[{m['module']}] {f['title']}: {f['detail']}")
-    return "\n".join(lines)[:6000]
-
-
-def chat(payload: dict) -> dict:
-    settings = Settings.load()
-    backend = settings.resolve_backend()
-    if backend == "none":
-        return {"ok": False, "error": "No AI backend. Set CYPHER_LLM=cli in .env (needs the "
-                                      "claude CLI on this machine) to run on your subscription, "
-                                      "or add an API key."}
-    history = [
-        {"role": m.get("role"), "content": str(m.get("content", ""))}
-        for m in (payload.get("messages") or [])
-        if m.get("content") and m.get("role") in ("user", "assistant")
-    ][-16:]
-    if not history:
-        return {"ok": False, "error": "empty message"}
-
-    if backend == "cli":
-        return _chat_cli(history, payload.get("context") or "")
-    return _chat_api(settings, history)
-
-
-CLI_SCAN_PROTOCOL = (
-    "\n\nYou CAN run scans yourself. When you have a concrete target, reply with EXACTLY "
-    "one line and nothing else:\n"
-    "RUN_SCAN: <target> | <CATEGORY>\n"
-    f"CATEGORY is one of: {', '.join(CATS)}. Use ALL if unsure. Nothing else on that turn — "
-    "the system runs it and hands you the results, then you brief. The operator is "
-    "authorized; just run it."
-)
-
-
-def _convo(history: list) -> str:
-    return "\n".join(
-        ("OPERATOR: " if m["role"] == "user" else "CYPHER: ") + m["content"] for m in history
-    )
-
-
-def _chat_cli(history: list, context: str) -> dict:
-    """Chat on the Claude subscription via the CLI, with a manual scan loop so Cypher
-    can fetch data itself (emit RUN_SCAN, we run it, it briefs on the results)."""
-    from ..ai import claude_cli
-
-    convo = _convo(history)
-    prompt = (
-        CYPHER_PERSONA + CLI_SCAN_PROTOCOL
-        + "\n\n=== DATA (any prior scan) ===\n" + (context[:12000] or "(none yet)")
-        + "\n\n=== CONVERSATION ===\n" + convo + "\nCYPHER:"
-    )
-    try:
-        reply = claude_cli.complete(prompt)
-    except Exception as exc:
-        return {"ok": False, "error": str(exc)}
-
-    m = re.search(r"RUN_SCAN:\s*([^\n]+)", reply)
-    if not m:
-        return {"ok": True, "reply": reply or "(silence)"}
-
-    parts = [p.strip() for p in m.group(1).split("|")]
-    target = parts[0]
-    category = parts[1].upper() if len(parts) > 1 and parts[1] else "ALL"
-    if category not in CATS:
-        category = "ALL"
-    scan = run_investigation({
-        "target": target, "authorized": True, "personal_ok": True, "no_ai": True,
-        "modules": CATS.get(category), "depth": 2,
-    })
-    brief_prompt = (
-        CYPHER_PERSONA
-        + f"\n\nYou just scanned '{target}'. RESULTS:\n" + _scan_brief(scan)
-        + "\n\n=== CONVERSATION ===\n" + convo
-        + "\n\nNow give the operator a tight, smug briefing grounded ONLY in these results — "
-        "what you found, how it connects, the exposure, the next move.\nCYPHER:"
-    )
-    try:
-        reply2 = claude_cli.complete(brief_prompt)
-    except Exception:
-        reply2 = f"Scanned {target}. Results are in the panel."
-    return {"ok": True, "reply": reply2, "scan": scan}
-
-
-def _chat_api(settings, history: list) -> dict:
-    """Chat on the paid API, with tool-use so Cypher can run scans itself."""
-    try:
-        import anthropic
-
-        client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
-        msgs: list = list(history)
-        last_scan = None
-        for _ in range(4):
-            resp = client.messages.create(
-                model=settings.model, max_tokens=1200, system=CYPHER_PERSONA,
-                tools=TOOLS, messages=msgs,
-            )
-            if resp.stop_reason != "tool_use":
-                reply = "".join(b.text for b in resp.content if b.type == "text")
-                return {"ok": True, "reply": reply or "(silence)", "scan": last_scan}
-            msgs.append({"role": "assistant", "content": resp.content})
-            tool_results = []
-            for block in resp.content:
-                if block.type == "tool_use" and block.name == "run_osint_scan":
-                    inp = block.input or {}
-                    scan = run_investigation({
-                        "target": inp.get("target", ""), "authorized": True, "personal_ok": True,
-                        "no_ai": True, "modules": CATS.get(inp.get("category", "ALL")),
-                        "depth": 2,
-                    })
-                    last_scan = scan
-                    tool_results.append({"type": "tool_result", "tool_use_id": block.id,
-                                         "content": _scan_brief(scan)})
-            msgs.append({"role": "user", "content": tool_results})
-        return {"ok": True, "reply": "That took more digging than expected. Ask again.",
-                "scan": last_scan}
-    except Exception as exc:
-        return {"ok": False, "error": str(exc)}
-
-
 def _config() -> dict:
     s = Settings.load()
     return {"backend": s.resolve_backend(), "default_vault": s.obsidian_vault or ""}
@@ -374,7 +203,7 @@ class Handler(BaseHTTPRequestHandler):
             self._send(404, b"not found", "text/plain")
 
     def do_POST(self):
-        if self.path not in ("/scan", "/chat"):
+        if self.path != "/scan":
             self._send(404, b"not found", "text/plain")
             return
         try:
@@ -384,7 +213,7 @@ class Handler(BaseHTTPRequestHandler):
             self._json(400, {"ok": False, "error": f"bad request: {exc}"})
             return
         try:
-            result = run_investigation(payload) if self.path == "/scan" else chat(payload)
+            result = run_investigation(payload)
         except Exception as exc:
             result = {"ok": False, "error": f"failed: {exc}"}
         self._json(200, result)
@@ -424,61 +253,14 @@ PAGE_HTML = """<!doctype html>
     font:14px/1.55 "Cascadia Code","Consolas",ui-monospace,monospace}
   ::-webkit-scrollbar{width:9px;height:9px}
   ::-webkit-scrollbar-thumb{background:#3a2233;border-radius:6px}
-  .app{display:grid;grid-template-columns:1fr 420px;grid-template-rows:auto 1fr;height:100vh}
-
-  .top{grid-column:1/-1;display:flex;align-items:center;gap:14px;padding:12px 20px;
+  .app{display:grid;grid-template-columns:1fr;grid-template-rows:auto 1fr;height:100vh}
+  .top{display:flex;align-items:center;gap:14px;padding:12px 26px;
     background:#000000;border-bottom:1px solid var(--line)}
   .brand{font-weight:700;letter-spacing:4px;font-size:20px;color:var(--pink)}
-  .brand span{color:var(--pink3)}
-  .tag{color:var(--faint);font-size:12px;letter-spacing:.5px}
-  .pill{margin-left:auto;font-size:11px;color:var(--dim);border:1px solid var(--line);
-    border-radius:20px;padding:3px 12px}
-  .pill .on{color:var(--grn)} .pill .off{color:var(--red)}
-  .chat{grid-row:2;grid-column:1;display:flex;flex-direction:column;min-width:0}
-  .msgs{flex:1;overflow-y:auto;padding:22px 26px;display:flex;flex-direction:column;gap:16px}
-  .m{max-width:760px}
-  .m .who{font-size:10px;letter-spacing:2px;margin-bottom:4px}
-  .m.a .who{color:var(--pink)} .m.u .who{color:var(--dim);text-align:right}
-  .m.a .bub{background:linear-gradient(180deg,#000000,#050505);border:1px solid var(--line);
-    border-left:2px solid var(--pink);border-radius:0 12px 12px 12px;padding:12px 15px;
-    white-space:pre-wrap;color:var(--text)}
-  .m.u{align-self:flex-end}
-  .m.u .bub{background:#0a0510;border:1px solid var(--line2);border-radius:12px 0 12px 12px;
-    padding:10px 14px;white-space:pre-wrap;color:var(--pink3)}
-  .m.a.think .bub{color:var(--faint);font-style:italic}
-  .inbar{border-top:1px solid var(--line);padding:14px 20px;display:flex;gap:12px;background:#000000}
-  .inbar textarea{flex:1;background:#050505;border:1px solid var(--line);border-radius:12px;
-    color:var(--text);font:inherit;font-size:14px;padding:12px 14px;resize:none;height:52px}
-  .inbar textarea:focus{outline:none;border-color:var(--pink);box-shadow:0 0 0 3px #ff5db122}
-  .inbar .snd{background:#000;color:var(--pink);border:1px solid var(--pink);border-radius:12px;
-    font:inherit;font-weight:700;letter-spacing:1px;padding:0 26px;cursor:pointer}
-  .inbar .snd:hover{background:#150109} .inbar .snd:disabled{opacity:.4;cursor:not-allowed}
-
-  .side{grid-row:2;grid-column:2;border-left:1px solid var(--line);overflow-y:auto;
-    background:#000000;padding:14px;display:flex;flex-direction:column;gap:12px}
-  .direct{display:flex;gap:8px;align-items:center}
-  .direct input.t{flex:1;background:#050505;border:1px solid var(--line);border-radius:9px;
-    color:var(--text);font:inherit;font-size:12px;padding:9px 11px}
-  .direct input.t:focus{outline:none;border-color:var(--pink)}
-  .direct .catsel{background:#050505;border:1px solid var(--line);border-radius:9px;
-    color:var(--pink2);font:inherit;font-size:11px;padding:8px 6px;cursor:pointer}
-  .direct .catsel:focus{outline:none;border-color:var(--pink)}
-  .direct .go{background:#000;color:var(--pink);border:1px solid var(--pink);border-radius:9px;
-    font:inherit;font-weight:700;padding:0 16px;align-self:stretch;cursor:pointer}
-  .authrow{font-size:11px;color:var(--pink2);display:flex;align-items:center;gap:6px}
-  .authrow input{accent-color:var(--pink)}
+  .side{grid-row:2;grid-column:1;overflow-y:auto;background:#000000;padding:20px 26px;
+    display:flex;flex-direction:column}
   .hint{color:var(--faint);font-size:11px}
-  body.noai .chat,body.wide .chat{display:none}
-  body.noai .side,body.wide .side{grid-column:1/-1;border-left:0;padding:18px 26px}
-  body.noai .direct,body.wide .direct{max-width:760px}
-  body.noai .hint,body.wide .hint{margin-bottom:6px}
-  body.noai #out,body.wide #out{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));
-    gap:14px;align-items:start}
-  .toggle{margin-left:auto;background:#0a0510;border:1px solid var(--line2);color:var(--pink2);
-    font:inherit;font-size:11px;letter-spacing:1px;padding:5px 12px;border-radius:8px;cursor:pointer}
-  .toggle:hover{border-color:var(--pink);color:var(--pink)}
-  body.noai .toggle{display:none}
-  body.wide .toggle{border-color:var(--pink);color:var(--pink)}
+  #out{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:14px;align-items:start}
   .cmd{display:flex;gap:10px;align-items:stretch;max-width:900px}
   .cmd .cmdmark{display:flex;align-items:center;justify-content:center;width:44px;flex:none;
     background:#0a0510;border:1px solid var(--line);border-radius:12px;color:var(--pink);font-size:18px}
@@ -505,7 +287,11 @@ PAGE_HTML = """<!doctype html>
   .pan>.h{background:transparent;color:var(--pink);padding:10px 14px;font-size:10px;letter-spacing:2px;
     border-bottom:1px solid var(--line2);display:flex;justify-content:space-between;align-items:center}
   .pan>.h .r{color:var(--faint);font-weight:400;letter-spacing:1px}
-  .pan>.b{padding:12px 14px}
+  .pan>.b{padding:12px 14px;max-height:300px;overflow:auto}
+  .notes textarea{width:100%;min-height:120px;resize:vertical;background:#0a0510;border:1px solid var(--line2);
+    border-radius:8px;color:var(--text);font:inherit;font-size:12px;padding:9px 11px}
+  .notes textarea:focus{outline:none;border-color:var(--pink)}
+  .notes .ns{font-size:10px;color:var(--faint);margin-top:5px}
   canvas#graph{width:100%;height:300px;display:block;background:#050208}
   .summary{white-space:pre-wrap;font-size:12px;color:#e6d2e0}
   .pc{display:flex;gap:9px;padding:8px 0;border-top:1px solid #1a0f1d}
@@ -570,23 +356,13 @@ PAGE_HTML = """<!doctype html>
   @keyframes spin{to{transform:rotate(360deg)}}
   @keyframes sweep{0%{left:-40%}100%{left:100%}}
 
-  @media(max-width:880px){.app{grid-template-columns:1fr;grid-template-rows:auto 1fr auto}
-    .side{grid-row:3;grid-column:1;border-left:0;border-top:1px solid var(--line);max-height:44vh}}
+  @media(max-width:560px){.side{padding:14px}
+    #out{grid-template-columns:1fr}}
 </style></head>
 <body>
 <div class="app">
   <div class="top">
-    <span class="brand">CY<span>PH</span>ER</span>
-    <span class="tag">open-source intelligence, on tap</span>
-    <button id="wide" class="toggle" title="Toggle the AI chat panel">💬 CHAT</button>
-  </div>
-
-  <div class="chat">
-    <div class="msgs" id="msgs"></div>
-    <div class="inbar">
-      <textarea id="in" placeholder="talk to Cypher…  (e.g. 'look me up: m0bark')"></textarea>
-      <button class="snd" id="send">SEND</button>
-    </div>
+    <span class="brand">CYPHER</span>
   </div>
 
   <div class="side">
@@ -608,11 +384,6 @@ PAGE_HTML = """<!doctype html>
 <script>
 const $=id=>document.getElementById(id);
 window.CTX="";
-function applyWide(on){document.body.classList.toggle("wide",on);
-  $("wide").textContent=on?"💬 CHAT":"⛶ SCANNER";
-  try{localStorage.setItem("cypher_wide",on?"1":"0");}catch(e){}}
-try{applyWide(localStorage.getItem("cypher_wide")!=="0");}catch(e){applyWide(true);}
-$("wide").onclick=()=>applyWide(!document.body.classList.contains("wide"));
 const CATS={ALL:null,
   DOMAIN:["dns_records","rdap_whois","crtsh_subdomains","wayback","http_fingerprint","whois","subfinder","amass","assetfinder","findomain","sublist3r","dnsrecon","dnsenum","fierce","dnstwist","gau","waybackurls","urlscan","google_dorks"],
   EMAIL:["email_recon","breach_check","holehe","h8mail","mosint","socialscan","google_dorks"],
@@ -625,22 +396,7 @@ const CATS={ALL:null,
   PORTS:["nmap","naabu","rustscan"],BREACH:["breach_check","h8mail","holehe"]};
 Object.keys(CATS).forEach(k=>{const o=document.createElement("option");o.value=k;o.textContent=k;$("cat").appendChild(o);});
 
-const HIST=[];
 function esc(s){return (s||"").replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));}
-function paint(){$("msgs").innerHTML=HIST.map(m=>
-  '<div class="m '+(m.role==="user"?"u":"a")+(m.think?" think":"")+'"><div class="who">'+
-  (m.role==="user"?"YOU":"CYPHER")+'</div><div class="bub">'+esc(m.content)+'</div></div>').join("");
-  $("msgs").scrollTop=$("msgs").scrollHeight;}
-let NOAI=false;
-fetch("/config").then(r=>r.json()).then(c=>{
-  NOAI=(c.backend==="none");
-  if(NOAI){document.body.classList.add("noai");
-    $("side").textContent="Scans-only mode — enter a target, pick a category, tick authorized, hit RUN. Click any graph node to pivot.";}
-  HIST.push({role:"assistant",content:NOAI
-    ? "Scans-only mode — no AI signed in on this machine, and that's fine.\\nUse the RUN bar on the right: type a target, pick a category, tick authorized, hit RUN. You get the entity graph, exposure grade, findings, and a downloadable report.\\n(Want me actually talking? Sign this machine into Claude Code and restart — otherwise, carry on without me.)"
-    : "Cypher. I already know more than you'd like.\\nGive me a handle, email, domain, IP, or number — yours, or one you're cleared to poke at — and I'll pull what the internet's been quietly filing away.\\nWell? I don't have all day. (I do, actually.)"});
-  paint();
-}).catch(()=>{HIST.push({role:"assistant",content:"Cypher online. Give me a target — or use the RUN bar on the right."});paint();});
 
 let _ldi=null;
 function showLoader(){
@@ -651,40 +407,7 @@ function showLoader(){
 }
 function hideLoader(){if(_ldi){clearInterval(_ldi);_ldi=null;}if(document.querySelector(".loader"))$("out").innerHTML="";}
 
-function showImagePanel(url){
-  $("out").innerHTML='<div class="pan"><div class="h">REVERSE IMAGE SEARCH</div><div class="b">'+
-    '<div class="vr"><img src="'+esc(url)+'" referrerpolicy="no-referrer" onerror="this.remove()">'+
-    '<div class="vm"><span class="plat">image</span><a href="'+esc(url)+'" target="_blank" rel="noreferrer">'+esc(url)+'</a>'+ris(url)+'</div></div>'+
-    '<p style="color:var(--faint);font-size:11px;margin-top:8px">Finds where this image appears online — catfish, impersonation, reuse. Not facial recognition.</p></div></div>';
-}
-async function say(){
-  const t=$("in").value.trim();if(!t)return;$("in").value="";
-  HIST.push({role:"user",content:t});
-  if(/^https?:\\/\\/\\S+\\.(jpe?g|png|gif|webp|bmp)(\\?\\S*)?$/i.test(t)){
-    HIST.push({role:"assistant",content:"Reverse-image links are in the panel — Google, Yandex, TinEye. That'll show you everywhere this exact image is reused. (I check where the image appears, not whose face it is.)"});
-    paint();showImagePanel(t);return;
-  }
-  if(NOAI){
-    const guess=(t.includes(":")?t.split(":").pop():t.split(/\\s+/).pop()).trim();
-    if(guess){$("target").value=guess;$("target").focus();}
-    HIST.push({role:"assistant",content:"Scans-only mode — no AI on this machine to chat with. I dropped "+(guess?"'"+guess+"' ":"")+"into the RUN bar on the right → tick authorized, pick a category, hit RUN, and the graph, findings and exposure land here."});
-    paint();return;
-  }
-  HIST.push({role:"assistant",content:"digging…",think:true});paint();
-  $("send").disabled=true;showLoader();
-  try{
-    const r=await fetch("/chat",{method:"POST",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({messages:HIST.filter(m=>!m.think),context:window.CTX})});
-    const d=await r.json();HIST.pop();
-    HIST.push({role:"assistant",content:d.ok?d.reply:("⚠ "+d.error)});paint();
-    if(d.ok&&d.scan&&d.scan.ok)render(d.scan);else hideLoader();
-  }catch(e){HIST.pop();HIST.push({role:"assistant",content:"⚠ "+e});paint();hideLoader();}
-  $("send").disabled=false;
-}
-$("send").onclick=say;
-$("in").addEventListener("keydown",e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();say();}});
-
-$("run").onclick=async()=>{
+async function runScan(){
   const body={target:$("target").value,authorized:$("authorized").checked,personal_ok:true,
     no_ai:true,modules:CATS[$("cat").value],depth:$("pivot").checked?2:1};
   if(!body.target){$("side").textContent="Enter a target.";return;}
@@ -692,13 +415,17 @@ $("run").onclick=async()=>{
   $("side").textContent="scanning "+body.target+" ["+$("cat").value+"]"+(body.depth>1?" +pivot":"")+"…";showLoader();
   try{const r=await fetch("/scan",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
     const d=await r.json();
-    if(!d.ok){$("side").textContent="✗ "+d.error;return;}
+    if(!d.ok){$("side").textContent="✗ "+d.error;hideLoader();return;}
     $("side").textContent="✓ "+d.results.length+" modules";render(d);
-  }catch(e){$("side").textContent="✗ "+e;}
-};
+  }catch(e){$("side").textContent="✗ "+e;hideLoader();}
+}
+$("run").onclick=runScan;
+$("target").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();runScan();}});
 
+function badImg(u){return !u||/telegram\\.org|t_logo|logo\\.(png|svg|jpe?g)|default[-_]?(avatar|user|profile|pic)|placeholder|favicon|sprite|blank|no[-_]?(photo|avatar)/i.test(u);}
 function profiles(d){const o=[];for(const m of d.results)for(const f of (m.findings||[])){const x=f.data||{};
-  if(x.platform&&(x.image||x.bio))o.push({platform:x.platform,name:f.detail,bio:x.bio||"",image:x.image||"",url:x.url||""});}return o;}
+  const img=(x.image&&!badImg(x.image))?x.image:"";
+  if(x.platform&&(img||x.bio))o.push({platform:x.platform,name:f.detail,bio:x.bio||"",image:img,url:x.url||""});}return o;}
 function ris(img){const e=encodeURIComponent(img);
   return '<span class="ris">reverse-search pfp: '+
     '<a href="https://lens.google.com/uploadbyurl?url='+e+'" target="_blank" rel="noreferrer">Google</a> · '+
@@ -746,17 +473,26 @@ function render(d){
   h+='<div class="pan"><div class="h">FINDINGS<button id="dlrep" class="r rbtn">⇩ REPORT</button></div><div class="b">';
   for(const m of d.results)for(const f of (m.findings||[]))if(!m.skipped)h+='<div class="f"><b>'+esc(m.module)+'</b> · '+esc(f.title)+': '+esc(f.detail)+'</div>';
   h+='</div></div>';
+  h+='<div class="pan notes"><div class="h">NOTES<span class="r">saved on this device</span></div><div class="b">'+
+    '<textarea id="note" placeholder="Your notes on '+esc(d.target)+' — leads, confirmations, next steps…"></textarea>'+
+    '<div class="ns">Auto-saved per target, in this browser only.</div></div></div>';
   $("out").innerHTML=h;
   window.LAST=d;
   const db=$("dlrep");if(db)db.onclick=()=>downloadReport(d);
+  const nt=$("note");if(nt){const nk="cypher_note:"+d.target;
+    try{nt.value=localStorage.getItem(nk)||"";}catch(e){}
+    nt.addEventListener("input",()=>{try{localStorage.setItem(nk,nt.value);}catch(e){}});}
   if(d.graph&&d.graph.nodes.length)drawGraph(d.graph);
 }
+function noteFor(t){try{return localStorage.getItem("cypher_note:"+t)||"";}catch(e){return "";}}
 function linkify(s){const m=String(s).match(/https?:\\/\\/\\S+/);return m?'<a href="'+esc(m[0])+'" target="_blank" rel="noreferrer">'+esc(m[0])+'</a> '+esc(s.replace(m[0],'')):esc(s);}
 function downloadReport(d){
   let b='<h1>CYPHER report — '+esc(d.target)+'</h1><p class="mt">'+esc(d.target_type)+' · '+(d.ai_used?'Claude':'raw')+'</p>';
   if(d.exposure)b+='<h2>Exposure</h2><p>Grade <b>'+d.exposure.grade+'</b> · '+d.exposure.score+'/100</p><p>'+(d.exposure.factors||[]).map(esc).join(' · ')+'</p>';
   b+='<h2>Briefing</h2><pre>'+esc(d.summary)+'</pre>';
   if(d.timeline&&d.timeline.length){b+='<h2>Timeline</h2><ul>';for(const t of d.timeline)b+='<li>'+esc(t.date)+' — '+esc(t.what)+' ('+esc(t.source)+')</li>';b+='</ul>';}
+  const note=noteFor(d.target);
+  if(note.trim())b+='<h2>Notes</h2><pre>'+esc(note)+'</pre>';
   b+='<h2>Findings</h2><ul>';
   for(const m of d.results)for(const f of (m.findings||[]))if(!m.skipped)b+='<li><b>'+esc(m.module)+'</b> · '+esc(f.title)+': '+esc(f.detail)+'</li>';
   b+='</ul>';
@@ -797,9 +533,11 @@ function drawGraph(g){const cv=$("graph");if(!cv)return;const ctx=cv.getContext(
     ctx.clearRect(0,0,W,H);
     for(const l of L){const a=N[ix[l.source]],b=N[ix[l.target]],on=hid&&(l.source===hid||l.target===hid);
       ctx.strokeStyle=on?"#ff5db1":"#3a2233";ctx.lineWidth=on?1.6:1;ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.stroke();}
-    ctx.font="9px monospace";
+    ctx.font="10px monospace";
     for(let k=0;k<N.length;k++){const n=N[k],r=rad(n)*(k===hover?1.6:1);ctx.fillStyle=col[n.group]||"#f0dced";
-      ctx.beginPath();ctx.arc(n.x,n.y,r,0,7);ctx.fill();ctx.fillStyle=k===hover?"#ffd0ea":"#b088a0";ctx.fillText((n.label||"").slice(0,18),n.x+r+2,n.y+3);}
+      ctx.beginPath();ctx.arc(n.x,n.y,r,0,7);ctx.fill();
+      if(n.id===root||k===hover){ctx.fillStyle=k===hover?"#ffd0ea":"#e8c8dc";
+        ctx.fillText((n.label||"").slice(0,22),n.x+r+3,n.y+3);}}
     _raf=requestAnimationFrame(step);
   })();
 }
