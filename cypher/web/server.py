@@ -524,6 +524,8 @@ PAGE_HTML = """<!doctype html>
   .rbtn{background:#0a0510;border:1px solid var(--line2);color:var(--pink2);cursor:pointer;
     font:inherit;font-size:10px;letter-spacing:1px;padding:2px 8px;border-radius:5px}
   .rbtn:hover{border-color:var(--pink);color:var(--pink)}
+  #graph{display:block;width:100%;touch-action:none;user-select:none;cursor:default}
+  .ghint{font-size:10px;color:var(--faint);padding:4px 12px 2px;letter-spacing:.3px}
   a{color:var(--pink2);text-decoration:none}
   .loader{display:flex;flex-direction:column;align-items:center;gap:16px;padding:54px 10px}
   .loader .ring{width:46px;height:46px;border:2px solid var(--line2);border-top-color:var(--pink);
@@ -560,6 +562,7 @@ PAGE_HTML = """<!doctype html>
       <button id="run" class="go">RUN</button>
     </div>
     <label class="authrow"><input type="checkbox" id="authorized"> I'm authorized to assess this</label>
+    <label class="authrow"><input type="checkbox" id="pivot" checked> follow leads — pivot into discovered accounts</label>
     <div class="hint" id="side">Results appear here as Cypher digs.</div>
     <div id="out"></div>
   </div>
@@ -585,8 +588,14 @@ function paint(){$("msgs").innerHTML=HIST.map(m=>
   '<div class="m '+(m.role==="user"?"u":"a")+(m.think?" think":"")+'"><div class="who">'+
   (m.role==="user"?"YOU":"CYPHER")+'</div><div class="bub">'+esc(m.content)+'</div></div>').join("");
   $("msgs").scrollTop=$("msgs").scrollHeight;}
-HIST.push({role:"assistant",content:"Cypher. I already know more than you'd like.\\nGive me a handle, email, domain, IP, or number — yours, or one you're cleared to poke at — and I'll pull what the internet's been quietly filing away.\\nWell? I don't have all day. (I do, actually.)"});
-paint();
+let NOAI=false;
+fetch("/config").then(r=>r.json()).then(c=>{
+  NOAI=(c.backend==="none");
+  HIST.push({role:"assistant",content:NOAI
+    ? "Scans-only mode — no AI signed in on this machine, and that's fine.\\nUse the RUN bar on the right: type a target, pick a category, tick authorized, hit RUN. You get the entity graph, exposure grade, findings, and a downloadable report.\\n(Want me actually talking? Sign this machine into Claude Code and restart — otherwise, carry on without me.)"
+    : "Cypher. I already know more than you'd like.\\nGive me a handle, email, domain, IP, or number — yours, or one you're cleared to poke at — and I'll pull what the internet's been quietly filing away.\\nWell? I don't have all day. (I do, actually.)"});
+  paint();
+}).catch(()=>{HIST.push({role:"assistant",content:"Cypher online. Give me a target — or use the RUN bar on the right."});paint();});
 
 let _ldi=null;
 function showLoader(){
@@ -610,6 +619,12 @@ async function say(){
     HIST.push({role:"assistant",content:"Reverse-image links are in the panel — Google, Yandex, TinEye. That'll show you everywhere this exact image is reused. (I check where the image appears, not whose face it is.)"});
     paint();showImagePanel(t);return;
   }
+  if(NOAI){
+    const guess=(t.includes(":")?t.split(":").pop():t.split(/\\s+/).pop()).trim();
+    if(guess){$("target").value=guess;$("target").focus();}
+    HIST.push({role:"assistant",content:"Scans-only mode — no AI on this machine to chat with. I dropped "+(guess?"'"+guess+"' ":"")+"into the RUN bar on the right → tick authorized, pick a category, hit RUN, and the graph, findings and exposure land here."});
+    paint();return;
+  }
   HIST.push({role:"assistant",content:"digging…",think:true});paint();
   $("send").disabled=true;showLoader();
   try{
@@ -626,10 +641,10 @@ $("in").addEventListener("keydown",e=>{if(e.key==="Enter"&&!e.shiftKey){e.preven
 
 $("run").onclick=async()=>{
   const body={target:$("target").value,authorized:$("authorized").checked,personal_ok:true,
-    no_ai:true,modules:CATS[$("cat").value]};
+    no_ai:true,modules:CATS[$("cat").value],depth:$("pivot").checked?2:1};
   if(!body.target){$("side").textContent="Enter a target.";return;}
   if(!body.authorized){$("side").textContent="Tick 'authorized' first.";return;}
-  $("side").textContent="scanning "+body.target+" ["+$("cat").value+"]…";showLoader();
+  $("side").textContent="scanning "+body.target+" ["+$("cat").value+"]"+(body.depth>1?" +pivot":"")+"…";showLoader();
   try{const r=await fetch("/scan",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
     const d=await r.json();
     if(!d.ok){$("side").textContent="✗ "+d.error;return;}
@@ -665,7 +680,7 @@ function render(d){
       '<div class="vm"><span class="plat">'+esc(v.label)+'</span><a href="'+esc(v.url)+'" target="_blank" rel="noreferrer">'+esc(v.url)+'</a>'+(v.bio?'<p>'+esc(v.bio)+'</p>':'')+(v.image?ris(v.image):'')+'</div>'+
       '<div class="vb"><button class="vy">YES</button><button class="vk">MAYBE</button><button class="vn">NO</button></div></div>';
     h+='</div></div>';}
-  if(d.graph&&d.graph.nodes.length)h+='<div class="pan"><div class="h">ENTITY NETWORK<span class="r">'+d.graph.nodes.length+' / '+d.graph.links.length+'</span></div><canvas id="graph" width="400" height="260"></canvas></div>';
+  if(d.graph&&d.graph.nodes.length)h+='<div class="pan"><div class="h">ENTITY NETWORK<span class="r">'+d.graph.nodes.length+' / '+d.graph.links.length+'</span></div><canvas id="graph" width="400" height="260"></canvas><div class="ghint">drag to arrange · click a node to load it into the scan bar</div></div>';
   h+='<div class="pan"><div class="h">BRIEFING<span class="r">'+(d.ai_used?"CLAUDE":"RAW")+'</span></div><div class="b summary">'+esc(d.summary)+'</div></div>';
   const fp=d.footprint;
   if(fp&&!fp.first_scan&&((fp.added||[]).length||(fp.removed||[]).length)){
@@ -715,20 +730,31 @@ let _raf=null;
 function drawGraph(g){const cv=$("graph");if(!cv)return;const ctx=cv.getContext("2d"),W=cv.width,H=cv.height;
   const col={domain:"#7bb8ff",ip:"#5ef2a8",email:"#ffb454",url:"#ff9ed6",username:"#c79bff",phone:"#5ef2a8",crypto:"#ffd36b",name:"#c79bff",image:"#ff9ed6",module:"#75566b"};
   const root=g.nodes[0].id;
-  const N=g.nodes.map(n=>({...n,x:W/2+(Math.random()-.5)*160,y:H/2+(Math.random()-.5)*160,vx:0,vy:0}));
+  const N=g.nodes.map(n=>({...n,x:W/2+(Math.random()-.5)*160,y:H/2+(Math.random()-.5)*160,vx:0,vy:0,fx:null,fy:null}));
   const ix={};N.forEach((n,i)=>ix[n.id]=i);const L=g.links.filter(l=>l.source in ix&&l.target in ix);
+  const rad=n=>n.id===root?8:(n.group==="module"?3:5);
+  let hover=-1,drag=-1,moved=false;
+  const at=e=>{const b=cv.getBoundingClientRect();return {x:(e.clientX-b.left)*W/b.width,y:(e.clientY-b.top)*H/b.height};};
+  const pick=p=>{let best=-1,bd=1e9;for(let i=0;i<N.length;i++){const dx=N[i].x-p.x,dy=N[i].y-p.y,d=dx*dx+dy*dy,rr=(rad(N[i])+6)*(rad(N[i])+6);if(d<rr&&d<bd){bd=d;best=i;}}return best;};
+  cv.onmousedown=e=>{const i=pick(at(e));if(i>=0){drag=i;moved=false;}};
+  cv.onmousemove=e=>{const p=at(e);if(drag>=0){N[drag].fx=p.x;N[drag].fy=p.y;moved=true;cv.style.cursor="grabbing";return;}hover=pick(p);cv.style.cursor=hover>=0?"pointer":"default";};
+  cv.onmouseup=()=>{if(drag>=0){const n=N[drag];if(!moved&&n.group!=="module"&&n.id!==root){$("target").value=n.id;$("target").focus();$("side").textContent="↑ '"+n.id+"' loaded — pick a category and RUN";}n.fx=null;n.fy=null;drag=-1;}};
+  cv.onmouseleave=()=>{hover=-1;if(drag>=0){N[drag].fx=null;N[drag].fy=null;drag=-1;}cv.style.cursor="default";};
   if(_raf)cancelAnimationFrame(_raf);
   (function step(){
     for(let i=0;i<N.length;i++)for(let j=i+1;j<N.length;j++){const a=N[i],b=N[j];
       let dx=a.x-b.x,dy=a.y-b.y,d=Math.hypot(dx,dy)||1,f=900/(d*d);dx/=d;dy/=d;a.vx+=dx*f;a.vy+=dy*f;b.vx-=dx*f;b.vy-=dy*f;}
     for(const l of L){const a=N[ix[l.source]],b=N[ix[l.target]];let dx=b.x-a.x,dy=b.y-a.y,d=Math.hypot(dx,dy)||1,f=(d-70)*.02;
       dx/=d;dy/=d;a.vx+=dx*f;a.vy+=dy*f;b.vx-=dx*f;b.vy-=dy*f;}
-    for(const n of N){n.vx+=(W/2-n.x)*.003;n.vy+=(H/2-n.y)*.003;n.vx*=.85;n.vy*=.85;n.x+=n.vx;n.y+=n.vy;}
-    ctx.clearRect(0,0,W,H);ctx.strokeStyle="#3a2233";ctx.lineWidth=1;
-    for(const l of L){const a=N[ix[l.source]],b=N[ix[l.target]];ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.stroke();}
+    for(const n of N){if(n.fx!=null){n.x=n.fx;n.y=n.fy;n.vx=0;n.vy=0;}
+      else{n.vx+=(W/2-n.x)*.003;n.vy+=(H/2-n.y)*.003;n.vx*=.85;n.vy*=.85;n.x+=n.vx;n.y+=n.vy;}}
+    const hid=hover>=0?N[hover].id:null;
+    ctx.clearRect(0,0,W,H);
+    for(const l of L){const a=N[ix[l.source]],b=N[ix[l.target]],on=hid&&(l.source===hid||l.target===hid);
+      ctx.strokeStyle=on?"#ff5db1":"#3a2233";ctx.lineWidth=on?1.6:1;ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.stroke();}
     ctx.font="9px monospace";
-    for(const n of N){const r=n.id===root?8:(n.group==="module"?3:5);ctx.fillStyle=col[n.group]||"#f0dced";
-      ctx.beginPath();ctx.arc(n.x,n.y,r,0,7);ctx.fill();ctx.fillStyle="#b088a0";ctx.fillText((n.label||"").slice(0,18),n.x+r+2,n.y+3);}
+    for(let k=0;k<N.length;k++){const n=N[k],r=rad(n)*(k===hover?1.6:1);ctx.fillStyle=col[n.group]||"#f0dced";
+      ctx.beginPath();ctx.arc(n.x,n.y,r,0,7);ctx.fill();ctx.fillStyle=k===hover?"#ffd0ea":"#b088a0";ctx.fillText((n.label||"").slice(0,18),n.x+r+2,n.y+3);}
     _raf=requestAnimationFrame(step);
   })();
 }
