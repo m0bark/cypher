@@ -7,10 +7,12 @@ on the machine running Cypher.
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 
 CLI_TIMEOUT = 180
+CLI_CWD = os.path.join(os.path.expanduser("~"), ".cypher-cli")
 
 
 def cli_available() -> bool:
@@ -23,6 +25,10 @@ def complete(prompt: str, timeout: int = CLI_TIMEOUT) -> str:
     if not exe:
         raise RuntimeError("claude CLI not found on PATH")
     try:
+        os.makedirs(CLI_CWD, exist_ok=True)
+    except Exception:
+        pass
+    try:
         proc = subprocess.run(
             [exe, "-p", prompt],
             capture_output=True,
@@ -31,6 +37,7 @@ def complete(prompt: str, timeout: int = CLI_TIMEOUT) -> str:
             errors="replace",
             timeout=timeout,
             check=False,
+            cwd=CLI_CWD if os.path.isdir(CLI_CWD) else None,
         )
     except subprocess.TimeoutExpired as exc:
         raise RuntimeError(f"claude CLI timed out after {timeout}s") from exc

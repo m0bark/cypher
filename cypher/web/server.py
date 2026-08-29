@@ -479,12 +479,34 @@ PAGE_HTML = """<!doctype html>
   .toggle:hover{border-color:var(--pink);color:var(--pink)}
   body.noai .toggle{display:none}
   body.wide .toggle{border-color:var(--pink);color:var(--pink)}
-  .pan{border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--panel)}
-  .pan>.h{background:#080808;color:var(--pink);padding:6px 11px;font-size:10px;letter-spacing:1.5px;
-    border-bottom:1px solid var(--line);display:flex;justify-content:space-between}
-  .pan>.h .r{color:var(--faint)}
-  .pan>.b{padding:10px}
-  canvas#graph{width:100%;height:260px;display:block;background:#050505;border-radius:6px}
+  .cmd{display:flex;gap:10px;align-items:stretch;max-width:900px}
+  .cmd .cmdmark{display:flex;align-items:center;justify-content:center;width:44px;flex:none;
+    background:#0a0510;border:1px solid var(--line);border-radius:12px;color:var(--pink);font-size:18px}
+  .cmd .t{flex:1;background:#0a0510;border:1px solid var(--line);border-radius:12px;color:var(--text);
+    font:inherit;font-size:15px;padding:14px 16px}
+  .cmd .t::placeholder{color:var(--faint)}
+  .cmd .t:focus{outline:none;border-color:var(--pink);box-shadow:0 0 0 3px #ff5db122}
+  .cmd .catsel{background:#0a0510;border:1px solid var(--line);border-radius:12px;color:var(--pink2);
+    font:inherit;font-size:12px;padding:0 12px;cursor:pointer}
+  .cmd .catsel:focus{outline:none;border-color:var(--pink)}
+  .cmd .go{background:linear-gradient(180deg,#ff5db1,#d53f8b);color:#12030a;border:0;border-radius:12px;
+    font:inherit;font-weight:800;letter-spacing:1px;padding:0 26px;cursor:pointer;font-size:14px}
+  .cmd .go:hover{filter:brightness(1.12)} .cmd .go:active{transform:translateY(1px)}
+  .opts{display:flex;gap:18px;align-items:center;flex-wrap:wrap;margin:12px 0 18px;max-width:900px}
+  .chk{font-size:12px;color:var(--pink2);display:flex;align-items:center;gap:6px;cursor:pointer;user-select:none}
+  .chk input{accent-color:var(--pink)}
+  .opts .hint{margin-left:auto}
+  .empty{grid-column:1/-1;text-align:center;color:var(--faint);padding:64px 20px}
+  .empty .ei{font-size:46px;color:var(--line2);line-height:1}
+  .empty p{margin:10px 0} .empty .es{font-size:11px;letter-spacing:.5px;color:var(--faint)}
+  .pan{border:1px solid var(--line2);border-radius:14px;overflow:hidden;
+    background:linear-gradient(180deg,#0a050c,#050208);transition:border-color .15s}
+  .pan:hover{border-color:#8a3a63}
+  .pan>.h{background:transparent;color:var(--pink);padding:10px 14px;font-size:10px;letter-spacing:2px;
+    border-bottom:1px solid var(--line2);display:flex;justify-content:space-between;align-items:center}
+  .pan>.h .r{color:var(--faint);font-weight:400;letter-spacing:1px}
+  .pan>.b{padding:12px 14px}
+  canvas#graph{width:100%;height:300px;display:block;background:#050208}
   .summary{white-space:pre-wrap;font-size:12px;color:#e6d2e0}
   .pc{display:flex;gap:9px;padding:8px 0;border-top:1px solid #1a0f1d}
   .pc:first-child{border-top:0}
@@ -505,14 +527,14 @@ PAGE_HTML = """<!doctype html>
   .vr .vm p{margin:2px 0;color:var(--dim);font-size:11px}
   .ris{display:block;font-size:10px;color:var(--faint);margin-top:2px}
   .ris a{color:var(--pink2)}
-  .score{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
-  .grade{font-size:32px;font-weight:700;width:54px;height:54px;display:flex;align-items:center;
-    justify-content:center;border:2px solid var(--pink);border-radius:12px;color:var(--pink)}
+  .score{display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+  .grade{font-size:40px;font-weight:800;width:66px;height:66px;display:flex;align-items:center;
+    justify-content:center;border:2px solid var(--pink);border-radius:16px;color:var(--pink);flex:none}
   .g-A,.g-B{color:var(--grn);border-color:var(--grn)}.g-C{color:var(--pink2);border-color:var(--pink2)}
   .g-D,.g-F{color:var(--red);border-color:var(--red)}
-  .sc{font-size:15px;color:var(--dim)}
-  .bar{flex:1;min-width:120px;height:8px;background:#1a0710;border-radius:5px;overflow:hidden}
-  .bar span{display:block;height:100%;background:var(--pink)}
+  .sc{font-size:18px;color:var(--text);font-weight:600}
+  .bar{flex:1 1 100%;min-width:120px;height:9px;background:#1a0710;border-radius:5px;overflow:hidden;margin-top:2px}
+  .bar span{display:block;height:100%;background:linear-gradient(90deg,#ff9ed6,#ff5db1)}
   .fac{margin-top:10px;font-size:11px;color:var(--dim)}
   .recs{margin:8px 0 0;padding-left:18px;font-size:12px;color:#e6d2e0}
   .recs li{margin:3px 0}
@@ -555,8 +577,8 @@ PAGE_HTML = """<!doctype html>
 <div class="app">
   <div class="top">
     <span class="brand">CY<span>PH</span>ER</span>
-    <span class="tag">he already knows. ask nicely.</span>
-    <button id="wide" class="toggle" title="Collapse the chat and give the whole screen to scanning">⛶ SCANNER</button>
+    <span class="tag">open-source intelligence, on tap</span>
+    <button id="wide" class="toggle" title="Toggle the AI chat panel">💬 CHAT</button>
   </div>
 
   <div class="chat">
@@ -568,15 +590,19 @@ PAGE_HTML = """<!doctype html>
   </div>
 
   <div class="side">
-    <div class="direct">
-      <input id="target" class="t" placeholder="scan a target directly">
+    <div class="cmd">
+      <span class="cmdmark">⌕</span>
+      <input id="target" class="t" placeholder="scan anything — handle, email, domain, IP, phone, wallet…">
       <select id="cat" class="catsel" title="which modules to run"></select>
-      <button id="run" class="go">RUN</button>
+      <button id="run" class="go">RUN&nbsp;▸</button>
     </div>
-    <label class="authrow"><input type="checkbox" id="authorized"> I'm authorized to assess this</label>
-    <label class="authrow"><input type="checkbox" id="pivot" checked> follow leads — pivot into discovered accounts</label>
-    <div class="hint" id="side">Results appear here as Cypher digs.</div>
-    <div id="out"></div>
+    <div class="opts">
+      <label class="chk"><input type="checkbox" id="authorized"> authorized to assess this</label>
+      <label class="chk"><input type="checkbox" id="pivot" checked> follow leads &middot; pivot into discovered accounts</label>
+      <span class="hint" id="side">Enter a target and hit RUN.</span>
+    </div>
+    <div id="out"><div class="empty"><div class="ei">⌕</div><p>Point Cypher at a target and hit RUN.</p>
+      <p class="es">handles &middot; emails &middot; domains &middot; IPs &middot; phone numbers &middot; crypto wallets &middot; images</p></div></div>
   </div>
 </div>
 <script>
@@ -585,7 +611,7 @@ window.CTX="";
 function applyWide(on){document.body.classList.toggle("wide",on);
   $("wide").textContent=on?"💬 CHAT":"⛶ SCANNER";
   try{localStorage.setItem("cypher_wide",on?"1":"0");}catch(e){}}
-try{if(localStorage.getItem("cypher_wide")==="1")applyWide(true);}catch(e){}
+try{applyWide(localStorage.getItem("cypher_wide")!=="0");}catch(e){applyWide(true);}
 $("wide").onclick=()=>applyWide(!document.body.classList.contains("wide"));
 const CATS={ALL:null,
   DOMAIN:["dns_records","rdap_whois","crtsh_subdomains","wayback","http_fingerprint","whois","subfinder","amass","assetfinder","findomain","sublist3r","dnsrecon","dnsenum","fierce","dnstwist","gau","waybackurls","urlscan","google_dorks"],
