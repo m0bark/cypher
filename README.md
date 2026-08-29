@@ -1,10 +1,10 @@
 # Cypher
 
-**AI-orchestrated OSINT console.** You talk to Cypher — an analyst persona — in a
-chat-first web UI. It picks the right modules for a target, runs them, correlates
-the findings, and briefs you back. Pluggable modules self-register; the Kali
-toolchain plugs in when present. Cypher is the brain, your installed tooling is
-the hands.
+**OSINT scanner console.** Point it at a target — handle, email, domain, IP,
+phone, wallet, or image — and it picks the right modules, runs them, follows the
+leads (pivoting into discovered accounts), and lays the results out as a
+dashboard: exposure grade, entity map, findings, and per-target notes. Pluggable
+modules self-register; the Kali toolchain plugs in when present.
 
 ## Authorized use only
 
@@ -28,24 +28,24 @@ The first launch builds a virtual environment, installs Cypher and the common
 OSINT tools, then opens the console at `http://127.0.0.1:8765`. It binds to
 localhost only.
 
-## AI on your Claude subscription (no API credits)
+## No accounts, no credits
 
-Cypher's chat and briefings run on your existing Claude Code subscription via the
-`claude` CLI — no per-token API billing. The launcher writes `CYPHER_LLM=cli` to
-`.env` for you; just have the CLI installed and logged in (`claude` once). Prefer
-the paid API instead? Put `ANTHROPIC_API_KEY=...` in `.env`. With neither, scans,
-the entity graph, the scorecard and the profile cards all still work — only the
-written briefing falls back to a template.
+The scanner needs no login and no API keys — just double-click and go. The written
+briefing is a deterministic template by default; an optional AI briefing can run
+on your Claude Code subscription (`CYPHER_LLM=cli`, free, no API credits) or the
+paid API (`ANTHROPIC_API_KEY`). Everything else — scans, entity map, scorecard,
+findings — works without any of that.
 
 ## What it does
 
-- **Chat-first** — describe a target in plain language; Cypher runs the scan itself and briefs you.
 - **Auto target typing** — domain, IP, email, URL, username, phone, name, image, or crypto address.
-- **Entity graph** — live force-directed map of what connects to what.
+- **Follow-leads pivots** — deterministically expands into discovered accounts (no AI required).
+- **Entity map** — live force-directed graph of what connects to what; drag nodes, click one to scan it.
 - **Exposure scorecard** — a 0–100 grade with the factors behind it.
 - **Verify list** — ambiguous profile hits become a yes / maybe / no checklist instead of false certainty.
+- **Reverse-image** — pfp hits get one-click reverse search across Google, Yandex, Bing, TinEye and more.
 - **Timeline** — dated findings (registrations, breaches) assembled into a chronology.
-- **Remove-me** — opt-out and account-deletion links for what a self-scan surfaced.
+- **Notes** — a per-target scratchpad, saved locally and folded into the report.
 - **Footprint diff** — a re-scan shows what appeared or vanished since last time.
 - **HTML report** — one-click standalone report of any scan.
 

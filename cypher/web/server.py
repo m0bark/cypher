@@ -22,7 +22,6 @@ from ..core.settings import Settings
 from ..core.target import TargetType, parse_target
 from ..report.footprint import diff_and_save
 from ..report.obsidian import write_note
-from ..report.removal import removal_links
 from ..report.renderer import write_report
 from ..report.scorecard import score_exposure
 from ..report.timeline import build_timeline
@@ -149,7 +148,6 @@ def run_investigation(payload: dict) -> dict:
         "graph": _build_graph(inv),
         "exposure": score_exposure(inv),
         "timeline": build_timeline(inv),
-        "removal": removal_links(inv),
         "footprint": footprint,
         "report_path": paths.get("markdown"),
         "obsidian_path": obsidian_path,
@@ -427,10 +425,14 @@ function profiles(d){const o=[];for(const m of d.results)for(const f of (m.findi
   const img=(x.image&&!badImg(x.image))?x.image:"";
   if(x.platform&&(img||x.bio))o.push({platform:x.platform,name:f.detail,bio:x.bio||"",image:img,url:x.url||""});}return o;}
 function ris(img){const e=encodeURIComponent(img);
+  const t=[["Google Lens","https://lens.google.com/uploadbyurl?url="+e],
+    ["Google Images","https://www.google.com/searchbyimage?image_url="+e],
+    ["Yandex","https://yandex.com/images/search?rpt=imageview&url="+e],
+    ["Bing","https://www.bing.com/images/search?view=detailv2&iss=sbi&q=imgurl:"+e],
+    ["TinEye","https://tineye.com/search?url="+e],
+    ["Karma Decay","http://karmadecay.com/search?q="+e]];
   return '<span class="ris">reverse-search pfp: '+
-    '<a href="https://lens.google.com/uploadbyurl?url='+e+'" target="_blank" rel="noreferrer">Google</a> · '+
-    '<a href="https://yandex.com/images/search?rpt=imageview&url='+e+'" target="_blank" rel="noreferrer">Yandex</a> · '+
-    '<a href="https://tineye.com/search?url='+e+'" target="_blank" rel="noreferrer">TinEye</a></span>';}
+    t.map(x=>'<a href="'+x[1]+'" target="_blank" rel="noreferrer">'+x[0]+'</a>').join(' · ')+'</span>';}
 function verifyItems(d){const items=[],seen=new Set();
   for(const p of profiles(d)){if(p.url&&!seen.has(p.url)){seen.add(p.url);items.push({label:p.platform,url:p.url,image:p.image,bio:p.bio});}}
   if(d.graph)for(let i=1;i<d.graph.nodes.length;i++){const n=d.graph.nodes[i];
@@ -463,13 +465,6 @@ function render(d){
   if(d.timeline&&d.timeline.length){h+='<div class="pan"><div class="h">TIMELINE<span class="r">'+d.timeline.length+'</span></div><div class="b">';
     for(const t of d.timeline)h+='<div class="tl"><span class="td">'+esc(t.date)+'</span><span class="tw">'+esc(t.what)+'</span><span class="ts">'+esc(t.source)+'</span></div>';
     h+='</div></div>';}
-  if(d.removal&&((d.removal.accounts||[]).length||(d.removal.brokers||[]).length)){
-    h+='<div class="pan"><div class="h">REMOVE ME<span class="r">opt-out</span></div><div class="b">';
-    if((d.removal.accounts||[]).length){h+='<div class="rl-h">Accounts found — deactivate:</div>';
-      for(const a of d.removal.accounts)h+='<div class="rl"><b>'+esc(a.platform)+'</b> '+linkify(a.url)+'</div>';}
-    h+='<div class="rl-h">Data brokers — opt out:</div>';
-    for(const b of d.removal.brokers)h+='<div class="rl"><b>'+esc(b.name)+'</b> <a href="'+esc(b.url)+'" target="_blank" rel="noreferrer">'+esc(b.url)+'</a></div>';
-    h+='</div></div>';}
   h+='<div class="pan"><div class="h">FINDINGS<button id="dlrep" class="r rbtn">⇩ REPORT</button></div><div class="b">';
   for(const m of d.results)for(const f of (m.findings||[]))if(!m.skipped)h+='<div class="f"><b>'+esc(m.module)+'</b> · '+esc(f.title)+': '+esc(f.detail)+'</div>';
   h+='</div></div>';
@@ -485,7 +480,6 @@ function render(d){
   if(d.graph&&d.graph.nodes.length)drawGraph(d.graph);
 }
 function noteFor(t){try{return localStorage.getItem("cypher_note:"+t)||"";}catch(e){return "";}}
-function linkify(s){const m=String(s).match(/https?:\\/\\/\\S+/);return m?'<a href="'+esc(m[0])+'" target="_blank" rel="noreferrer">'+esc(m[0])+'</a> '+esc(s.replace(m[0],'')):esc(s);}
 function downloadReport(d){
   let b='<h1>CYPHER report — '+esc(d.target)+'</h1><p class="mt">'+esc(d.target_type)+' · '+(d.ai_used?'Claude':'raw')+'</p>';
   if(d.exposure)b+='<h2>Exposure</h2><p>Grade <b>'+d.exposure.grade+'</b> · '+d.exposure.score+'/100</p><p>'+(d.exposure.factors||[]).map(esc).join(' · ')+'</p>';
@@ -496,7 +490,6 @@ function downloadReport(d){
   b+='<h2>Findings</h2><ul>';
   for(const m of d.results)for(const f of (m.findings||[]))if(!m.skipped)b+='<li><b>'+esc(m.module)+'</b> · '+esc(f.title)+': '+esc(f.detail)+'</li>';
   b+='</ul>';
-  if(d.removal){b+='<h2>Remove me</h2><ul>';for(const a of (d.removal.accounts||[]))b+='<li>'+esc(a.platform)+': '+esc(a.url)+'</li>';for(const x of (d.removal.brokers||[]))b+='<li>'+esc(x.name)+': '+esc(x.url)+'</li>';b+='</ul>';}
   const doc='<!doctype html><meta charset="utf-8"><title>CYPHER '+esc(d.target)+'</title><style>body{background:#0a0510;color:#f4eef2;font:14px/1.6 system-ui,sans-serif;max-width:820px;margin:40px auto;padding:0 20px}h1,h2{color:#ff5db1;border-bottom:1px solid #7a2f53;padding-bottom:6px}a{color:#ff9ed6}pre{white-space:pre-wrap;background:#050505;border:1px solid #7a2f53;padding:12px;border-radius:8px}.mt{color:#b89aab}li{margin:3px 0}</style>'+b;
   const blob=new Blob([doc],{type:"text/html"}),u=URL.createObjectURL(blob),a=document.createElement("a");
   a.href=u;a.download="cypher-"+d.target.replace(/[^a-z0-9]+/gi,"_")+".html";a.click();URL.revokeObjectURL(u);
@@ -536,8 +529,8 @@ function drawGraph(g){const cv=$("graph");if(!cv)return;const ctx=cv.getContext(
     ctx.font="10px monospace";
     for(let k=0;k<N.length;k++){const n=N[k],r=rad(n)*(k===hover?1.6:1);ctx.fillStyle=col[n.group]||"#f0dced";
       ctx.beginPath();ctx.arc(n.x,n.y,r,0,7);ctx.fill();
-      if(n.id===root||k===hover){ctx.fillStyle=k===hover?"#ffd0ea":"#e8c8dc";
-        ctx.fillText((n.label||"").slice(0,22),n.x+r+3,n.y+3);}}
+      ctx.fillStyle=k===hover?"#ffd0ea":(n.id===root?"#f4eef2":"#b499aa");
+      ctx.fillText((n.label||"").slice(0,22),n.x+r+3,n.y+3);}
     _raf=requestAnimationFrame(step);
   })();
 }

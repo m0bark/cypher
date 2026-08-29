@@ -17,9 +17,11 @@ from ..core.target import Target, TargetType
 
 ENGINES = [
     ("Google Lens", "https://lens.google.com/uploadbyurl?url={}"),
+    ("Google Images", "https://www.google.com/searchbyimage?image_url={}"),
     ("Yandex Images", "https://yandex.com/images/search?rpt=imageview&url={}"),
+    ("Bing Visual", "https://www.bing.com/images/search?view=detailv2&iss=sbi&q=imgurl:{}"),
     ("TinEye", "https://tineye.com/search?url={}"),
-    ("Bing Visual", "https://www.bing.com/images/search?q=imgurl:{}&view=detailv2&iss=sbi"),
+    ("Karma Decay (Reddit)", "http://karmadecay.com/search?q={}"),
 ]
 
 
@@ -27,8 +29,9 @@ class ReverseImage(BaseModule):
     name = "reverse_image"
     description = (
         "Reverse image search for an image URL: generates links to Google Lens, "
-        "Yandex, TinEye and Bing to find where the image is reused online "
-        "(impersonation / catfish / same-pfp). Links only; no facial recognition."
+        "Google Images, Yandex, Bing, TinEye and Karma Decay to find where the image "
+        "is reused online (impersonation / catfish / same-pfp). Links only; no "
+        "facial recognition."
     )
     applies_to = (TargetType.IMAGE,)
 

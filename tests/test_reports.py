@@ -2,7 +2,6 @@ from cypher.ai.orchestrator import Investigation
 from cypher.core.module import Finding, ModuleResult, Severity
 from cypher.core.target import TargetType, parse_target
 from cypher.report.footprint import diff_and_save
-from cypher.report.removal import removal_links
 from cypher.report.scorecard import score_exposure
 from cypher.report.timeline import build_timeline
 
@@ -34,12 +33,6 @@ def test_scorecard_returns_grade_and_score():
 def test_timeline_extracts_dates():
     tl = build_timeline(_investigation())
     assert any(e["date"] == "2015-06-01" for e in tl)
-
-
-def test_removal_lists_brokers_and_found_platform():
-    rem = removal_links(_investigation())
-    assert rem["brokers"]
-    assert any(a["platform"] == "github.com" for a in rem["accounts"])
 
 
 def test_footprint_first_scan(tmp_path):
