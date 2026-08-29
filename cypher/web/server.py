@@ -278,14 +278,12 @@ PAGE_HTML = """<!doctype html>
   .chk input{accent-color:var(--pink)}
   .opts .hint{margin-left:auto}
   .cmd2{display:flex;gap:8px;align-items:stretch;max-width:900px;margin:0 0 18px}
-  .cmd2 .cmdmark2{display:flex;align-items:center;justify-content:center;width:40px;flex:none;
-    background:#0a0510;border:1px solid var(--line2);border-radius:10px;font-size:15px}
   .cmd2 .t2{flex:1;background:#0a0510;border:1px solid var(--line2);border-radius:10px;color:var(--text);
-    font:inherit;font-size:13px;padding:10px 13px}
+    font:inherit;font-size:13px;padding:11px 14px}
   .cmd2 .t2:focus{outline:none;border-color:var(--pink)}
-  .cmd2 .go2{background:#0a0510;border:1px solid var(--pink);color:var(--pink);border-radius:10px;
-    font:inherit;font-weight:700;font-size:12px;letter-spacing:.5px;padding:0 18px;cursor:pointer}
-  .cmd2 .go2:hover{background:#150109}
+  .cmd2 .go2{background:linear-gradient(180deg,#ff5db1,#d53f8b);border:0;color:#12030a;border-radius:10px;
+    font:inherit;font-weight:800;font-size:12px;letter-spacing:.5px;padding:0 20px;cursor:pointer}
+  .cmd2 .go2:hover{filter:brightness(1.12)} .cmd2 .go2:active{transform:translateY(1px)}
   .empty{grid-column:1/-1;text-align:center;color:var(--faint);padding:64px 20px}
   .empty .ei{font-size:46px;color:var(--line2);line-height:1}
   .empty p{margin:10px 0} .empty .es{font-size:11px;letter-spacing:.5px;color:var(--faint)}
@@ -386,8 +384,7 @@ PAGE_HTML = """<!doctype html>
       <span class="hint" id="side">Enter a target and hit RUN.</span>
     </div>
     <div class="cmd2">
-      <span class="cmdmark2">🖼</span>
-      <input id="imgurl" class="t2" placeholder="reverse image search — paste an image / pfp URL">
+      <input id="imgurl" class="t2" placeholder="reverse image search — paste an image / pfp URL, then press Search">
       <button id="imggo" class="go2">SEARCH IMAGE</button>
     </div>
     <div id="out"><div class="empty"><div class="ei">⌕</div><p>Point Cypher at a target and hit RUN.</p>
