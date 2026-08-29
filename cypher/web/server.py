@@ -457,10 +457,19 @@ function risEngines(img){const e=encodeURIComponent(img);
 function ris(img){
   return '<span class="ris">reverse-search pfp: '+
     risEngines(img).map(x=>'<a href="'+x[1]+'" target="_blank" rel="noreferrer">'+x[0]+'</a>').join(' · ')+'</span>';}
+function hostOf(u){try{return new URL(u).hostname.replace(/^www\\./,"");}catch(e){return "";}}
+function handleOf(u){try{const p=new URL(u).pathname.split("/").filter(Boolean);return (p[p.length-1]||"").replace(/^@/,"");}catch(e){return "";}}
+var AV=[["instagram","instagram"],["github","github"],["gitlab","gitlab"],["x.com","twitter"],["twitter","twitter"],["t.me","telegram"],["telegram","telegram"],["youtube","youtube"],["twitch","twitch"],["tiktok","tiktok"],["reddit","reddit"],["medium","medium"],["dev.to","dev"],["soundcloud","soundcloud"],["dribbble","dribbble"],["mastodon","mastodon"],["substack","substack"]];
+function avatarFor(src,handle){if(!handle)return "";const s=(src||"").toLowerCase();
+  for(const a of AV){if(s.indexOf(a[0])>=0)return "https://unavatar.io/"+a[1]+"/"+encodeURIComponent(handle);}return "";}
 function verifyItems(d){const items=[],seen=new Set();
-  for(const p of profiles(d)){if(p.url&&!seen.has(p.url)){seen.add(p.url);items.push({label:p.platform,url:p.url,image:p.image,bio:p.bio});}}
+  function add(label,url,image,bio){if(!url||seen.has(url))return;seen.add(url);
+    const host=hostOf(url),real=(image&&!badImg(image))?image:"";
+    const pfp=real||avatarFor(host,handleOf(url));
+    items.push({label:host||label||"link",url:url,pfp:pfp,bio:bio||""});}
+  for(const p of profiles(d)) add(p.platform,p.url,p.image,p.bio);
   if(d.graph)for(let i=1;i<d.graph.nodes.length;i++){const n=d.graph.nodes[i];
-    if(n.group!=="module"&&/^https?:/.test(n.id||"")&&!seen.has(n.id)){seen.add(n.id);items.push({label:n.group,url:n.id});}}
+    if(/^https?:/.test(n.id||"")) add(n.group,n.id,"","");}
   return items;}
 function render(d){
   window.CTX="TARGET: "+d.target+"\\n"+d.results.flatMap(m=>(m.findings||[]).map(f=>"["+m.module+"] "+f.title+": "+f.detail)).join("\\n");
@@ -473,10 +482,12 @@ function render(d){
       ((e.recommendations||[]).length?'<ul class="recs">'+e.recommendations.map(r=>'<li>'+esc(r)+'</li>').join('')+'</ul>':'')+
       '</div></div>';}
   const V=verifyItems(d);
-  if(V.length){h+='<div class="pan"><div class="h">VERIFY — is it him?<span class="r">'+V.length+' links</span></div><div class="b">';
-    for(const v of V)h+='<div class="vr">'+(v.image?'<img src="'+esc(v.image)+'" referrerpolicy="no-referrer" onerror="this.remove()">':'')+
-      '<div class="vm"><span class="plat">'+esc(v.label)+'</span><a href="'+esc(v.url)+'" target="_blank" rel="noreferrer">'+esc(v.url)+'</a>'+(v.bio?'<p>'+esc(v.bio)+'</p>':'')+(v.image?ris(v.image):'')+'</div>'+
-      '<div class="vb"><button class="vy">YES</button><button class="vk">MAYBE</button><button class="vn">NO</button></div></div>';
+  if(V.length){h+='<div class="pan"><div class="h">VERIFY — is it him?<span class="r">'+V.length+' accounts</span></div><div class="b">';
+    for(const v of V){const pfpLine = v.pfp?ris(v.pfp)
+      :'<span class="ris">pfp: <a href="'+esc(v.url)+'" target="_blank" rel="noreferrer">open profile</a> to grab it, then use Search Image above</span>';
+      h+='<div class="vr">'+(v.pfp?'<img src="'+esc(v.pfp)+'" referrerpolicy="no-referrer" onerror="this.remove()">':'')+
+      '<div class="vm"><span class="plat">'+esc(v.label)+'</span><a href="'+esc(v.url)+'" target="_blank" rel="noreferrer">'+esc(v.url)+'</a>'+(v.bio?'<p>'+esc(v.bio)+'</p>':'')+pfpLine+'</div>'+
+      '<div class="vb"><button class="vy">YES</button><button class="vk">MAYBE</button><button class="vn">NO</button></div></div>';}
     h+='</div></div>';}
   if(d.graph&&d.graph.nodes.length)h+='<div class="pan"><div class="h">ENTITY NETWORK<span class="r">'+d.graph.nodes.length+' / '+d.graph.links.length+'</span></div><canvas id="graph" width="400" height="260"></canvas><div class="ghint">drag to arrange · click a node to load it into the scan bar</div></div>';
   h+='<div class="pan"><div class="h">BRIEFING<span class="r">'+(d.ai_used?"CLAUDE":"RAW")+'</span></div><div class="b summary">'+esc(d.summary)+'</div></div>';
