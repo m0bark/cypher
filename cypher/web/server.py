@@ -29,6 +29,7 @@ from ..report.timeline import build_timeline
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8765
 ENV_PATH = ".env"
+LOG_PATH = "log.txt"
 _PROXY_UA = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
@@ -101,6 +102,25 @@ def _build_graph(inv) -> dict:
     return {"nodes": list(nodes.values()), "links": links}
 
 
+def _log_search(raw: str, target, payload: dict, status: str) -> None:
+    """Append a scan attempt to the local audit log (this machine only)."""
+    import datetime
+
+    try:
+        ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        cat = payload.get("category") or ("ALL" if not payload.get("modules") else "custom")
+        line = (
+            f"{ts} | {target.type.value}:{target.value} | "
+            f"authorized={bool(payload.get('authorized'))} | "
+            f"personal_ok={bool(payload.get('personal_ok'))} | "
+            f"depth={payload.get('depth') or 1} | cat={cat} | {status}\n"
+        )
+        with open(LOG_PATH, "a", encoding="utf-8") as fh:
+            fh.write(line)
+    except Exception:
+        pass
+
+
 def run_investigation(payload: dict) -> dict:
     raw = (payload.get("target") or "").strip()
     if not raw:
@@ -108,15 +128,20 @@ def run_investigation(payload: dict) -> dict:
 
     target = parse_target(raw)
     if target.type is TargetType.UNKNOWN:
+        _log_search(raw, target, payload, "UNCLASSIFIED")
         return {"ok": False, "error": f"Could not classify target '{raw}'."}
 
     decision = assess(target)
     if not decision.allowed:
+        _log_search(raw, target, payload, "REFUSED")
         return {"ok": False, "error": f"Refused: {decision.reason}"}
     if not payload.get("authorized"):
+        _log_search(raw, target, payload, "BLOCKED-not-authorized")
         return {"ok": False, "error": "Tick 'authorized' to continue."}
     if decision.requires_confirmation and looks_personal(target) and not payload.get("personal_ok"):
+        _log_search(raw, target, payload, "NEEDS-personal-ok")
         return {"ok": False, "error": decision.reason, "needs_personal_ok": True}
+    _log_search(raw, target, payload, "SCANNED")
 
     settings = Settings.load()
     if payload.get("passive"):

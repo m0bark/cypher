@@ -19,4 +19,6 @@ env/
 reports/
 
 # External tool output dropped in the project root (sherlock <user>.txt, etc.)
+# and the local search audit log — never publish search history.
 /*.txt
+log.txt
